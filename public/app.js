@@ -1,67 +1,77 @@
+/* 选股有据 v3 · 一句话选股前端
+   一个输入框 + 开始筛选：明确意图自动取数并核验；含糊意图先给可编辑条件和解释，由用户点一次确认。
+   所有动态文本都用 textContent 写入，外链经 safeUrl 过滤协议。 */
+
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
-const state = {
-  catalog: null,
-  snapshot: null,
-  snapshotMode: null,
-  snapshotHistorical: false,
-  intent: null,
-  parsedText: '',
-  intentFresh: false,
-  clarificationAccepted: false,
-  conditions: [],
-  baselineConditions: null,
-  result: null,
-  stale: false,
-  saved: null,
-  compareCodes: [],
-  retryAction: null,
-  requestVersion: { catalog: 0, health: 0, interpret: 0, snapshot: 0, screen: 0 },
-  themePreference: 'system'
-};
+const STORE_KEY = 'stock-lens:records:v3';
+const SCHEMA = 3;
+const MAX_RECORDS = 5;
+const DEFAULT_TTL_MINUTES = 15;
 
-const metricFallback = [
+const METRIC_FALLBACK = [
   { id: 'pe_ttm', label: '市盈率（TTM）', unit: '倍', period: 'TTM', defaultOp: 'lt', defaultValue: 20 },
   { id: 'pb_mrq', label: '市净率（MRQ）', unit: '倍', period: 'MRQ', defaultOp: 'lt', defaultValue: 3 },
-  { id: 'revenue_yoy', label: '营收同比', unit: '%', period: '年度', defaultOp: 'gt', defaultValue: 10 },
-  { id: 'profit_yoy', label: '净利润同比', unit: '%', period: '年度', defaultOp: 'gt', defaultValue: 10 },
-  { id: 'roe', label: '净资产收益率', unit: '%', period: 'TTM', defaultOp: 'gt', defaultValue: 10 },
-  { id: 'volatility_20d', label: '20日波动率（年化）', unit: '%', period: '20日年化', defaultOp: 'lt', defaultValue: 30 },
-  { id: 'return_20d', label: '20日涨跌幅', unit: '%', period: '20日', defaultOp: 'gt', defaultValue: 5 },
-  { id: 'market_cap', label: '总市值', unit: '亿元', period: '最新', defaultOp: 'gt', defaultValue: 100 }
+  { id: 'roe', label: 'ROE', unit: '%', period: '报告期', defaultOp: 'gt', defaultValue: 10 },
+  { id: 'volatility_20d', label: '20日波动率', unit: '%', period: '20D年化', defaultOp: 'lte', defaultValue: 30 },
 ];
 
-const opLabels = { gt: '大于', gte: '不低于', lt: '小于', lte: '不高于', eq: '等于' };
-const modeLabels = {
-  demo: '演示数据',
-  fuyao: '扶摇数据',
-  ifind: 'iFinD授权数据',
-  public: '公开来源'
+const OP_LABEL = { gt: '大于', gte: '不低于', lt: '小于', lte: '不高于', eq: '等于' };
+const OP_SIGN = { gt: '>', gte: '≥', lt: '<', lte: '≤', eq: '=' };
+const STATUS_LABEL = { pass: '通过', fail: '未通过', unknown: '数据不足' };
+
+const state = {
+  catalog: null,
+  universe: null,
+  ttlMinutes: DEFAULT_TTL_MINUTES,
+  snapshot: null,
+  snapshotMode: 'auto',
+  snapshotLocalAt: 0,
+  historical: false,
+  intent: null,
+  parsedText: '',
+  draftValid: false,
+  needsConfirmation: false,
+  conditions: [],
+  baseline: null,
+  conflictIds: [],
+  result: null,
+  resultConditions: null,
+  stale: false,
+  filter: 'pass',
+  compareCodes: [],
+  records: [],
+  retry: null,
+  run: 0,
+  busy: false,
+  requestedMode: 'auto',
+  theme: 'system',
 };
 
-const safeUrl = value => {
-  try {
-    const url = new URL(value, window.location.origin);
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
-  } catch {
-    return '';
-  }
-};
+/* ---------- 基础工具 ---------- */
 
-const metric = id => (
-  (state.catalog?.metrics || metricFallback).find(item => item.id === id)
-  || metricFallback.find(item => item.id === id)
-  || { id, label: id || '未知指标', unit: '', period: '' }
-);
+const metrics = () => (state.catalog?.metrics?.length ? state.catalog.metrics : METRIC_FALLBACK);
 
-const setText = (selector, value) => {
-  const element = $(selector);
-  if (element) element.textContent = value == null ? '' : String(value);
-};
+function metric(id) {
+  return metrics().find(item => item.id === id)
+    || METRIC_FALLBACK.find(item => item.id === id)
+    || { id: String(id || ''), label: String(id || '未知指标'), unit: '', period: '' };
+}
 
-const clone = value => {
-  if (value == null) return value;
+function setText(selector, value) {
+  const node = $(selector);
+  if (node) node.textContent = value == null ? '' : String(value);
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = String(text);
+  return node;
+}
+
+function clone(value) {
   try {
     return structuredClone(value);
   } catch {
@@ -71,1065 +81,1583 @@ const clone = value => {
       return null;
     }
   }
-};
-
-function nextVersion(name) {
-  state.requestVersion[name] += 1;
-  return state.requestVersion[name];
 }
 
-function isCurrent(name, version) {
-  return state.requestVersion[name] === version;
-}
-
-function friendlyError(error) {
-  if (!error) return '暂时无法完成，请稍后重试。';
-  const message = String(error.message || '');
-  if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
-    return '暂时无法连接服务，请确认服务已启动后重试。';
+function safeUrl(value) {
+  try {
+    const url = new URL(String(value), window.location.origin);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+  } catch {
+    return '';
   }
-  if (message.includes('410')) return '这份快照已过期，请重新加载数据源。';
-  return message.length > 180 ? '服务暂时不可用，请稍后重试。' : message;
 }
+
+function numberText(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '未知';
+  const rounded = Math.round(value * 100) / 100;
+  return String(rounded);
+}
+
+function dateText(value) {
+  if (typeof value !== 'string' || !value.trim()) return '未知';
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString().slice(0, 10) : value.slice(0, 24);
+}
+
+function stampText(date = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 16).replace('T', ' ');
+  }
+}
+
+function ruleText(condition) {
+  const item = metric(condition.metric);
+  const value = Number.isFinite(condition.value) ? numberText(condition.value) : '未填写';
+  return `${item.label} ${OP_LABEL[condition.op] || condition.op || '未设置'} ${value}${item.unit || ''}`;
+}
+
+function conditionsComplete() {
+  return state.conditions.length > 0 && state.conditions.every(item => Number.isFinite(item.value));
+}
+
+function ttlMs() {
+  const minutes = Number(state.ttlMinutes);
+  return (Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_TTL_MINUTES) * 60_000;
+}
+
+function snapshotExpired() {
+  if (!state.snapshot || state.historical) return true;
+  return Date.now() - state.snapshotLocalAt > ttlMs();
+}
+
+/* ---------- 请求 ---------- */
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options
-  });
-  let body;
+  let response;
+  try {
+    response = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options });
+  } catch {
+    throw Object.assign(new Error('暂时无法连接服务，请确认网络或服务状态后重试。'), { kind: 'network' });
+  }
+  let body = null;
   try {
     body = await response.json();
   } catch {
-    throw new Error('服务返回了无法读取的结果。');
+    body = null;
   }
   if (!response.ok) {
-    const error = new Error(body?.error?.message || `请求未完成（${response.status}）`);
-    error.status = response.status;
-    error.payload = body;
-    throw error;
+    const message = typeof body?.error?.message === 'string' && body.error.message.length <= 200
+      ? body.error.message
+      : '服务暂时不可用，没有生成结论。';
+    throw Object.assign(new Error(message), { status: response.status, payload: body });
   }
+  if (!body || typeof body !== 'object') throw new Error('服务返回了无法读取的内容。');
   return body;
 }
 
-function showError(message, title = '暂时无法完成', retryAction = null) {
-  state.retryAction = retryAction;
-  $('#errorBox').hidden = false;
-  setText('#errorTitle', title);
+function current(run) {
+  return state.run === run;
+}
+
+/* ---------- 阶段条 ---------- */
+
+function setStage(name, stateName, text) {
+  const node = $(`#stage-${name}`);
+  if (node) node.dataset.state = stateName;
+  const map = { understand: '#stageUnderstandText', data: '#stageDataText', verify: '#stageVerifyText' };
+  if (text != null) setText(map[name], text);
+}
+
+function resetStages(text = '等待输入') {
+  setStage('understand', 'idle', text);
+  setStage('data', 'idle', '自动获取，无需选择来源');
+  setStage('verify', 'idle', '每个条件都给出数值与来源');
+}
+
+/* ---------- 错误 ---------- */
+
+const ERROR_TITLE = { model: '没能理解这句话', data: '数据没有取到', screen: '筛选没有完成', input: '还缺一点信息' };
+
+function showError(kind, message, retry = null, options = {}) {
+  state.retry = typeof retry === 'function' ? retry : null;
+  setText('#errorTitle', ERROR_TITLE[kind] || '暂时无法完成');
   setText('#errorMessage', message);
-  $('#retryBtn').hidden = !retryAction;
+  $('#retryBtn').hidden = !state.retry;
+  $('#errorDemoBtn').hidden = !options.offerDemo;
+  $('#errorBox').hidden = false;
 }
 
 function clearError() {
-  state.retryAction = null;
+  state.retry = null;
   $('#errorBox').hidden = true;
   $('#retryBtn').hidden = true;
+  $('#errorDemoBtn').hidden = true;
 }
 
-function resetSnapshot(reason = '请加载数据源后再筛选。', invalidate = true) {
-  if (invalidate) nextVersion('snapshot');
-  state.snapshot = null;
-  state.snapshotMode = null;
-  state.snapshotHistorical = false;
-  state.baselineConditions = null;
-  state.result = null;
-  state.compareCodes = [];
-  state.stale = true;
-  $('#resultsContent').hidden = true;
-  $('#emptyResults').hidden = false;
-  setText('#resultsSub', reason);
-  setText('#snapshotTag', '未生成快照');
-  $('#snapshotTag').className = 'snapshot-tag';
-  setText('#dataStatus', '尚未加载');
-  setText('#modeTitle', '尚未加载数据');
-  setText('#modeDescription', '请选择数据模式并加载，结果不会预先生成');
-  $('#modeDot').className = 'status-dot';
+/* ---------- 顶部观察范围 ---------- */
+
+function renderUniverse() {
+  const universe = state.snapshot?.universe || state.universe || null;
+  setText('#universeLabel', universe?.label || '12 家 A 股观察样本');
+
+  const snapshot = state.snapshot;
+  setText('#dataDate', snapshot?.asOf ? dateText(snapshot.asOf) : '尚未取数');
+  setText('#dataSource', snapshot?.source || (state.snapshotMode === 'demo' ? '合成演示数据' : '首次筛选时自动获取'));
+  const cached = Boolean(snapshot?.cached);
+  $('#cacheInfoWrap').hidden = !snapshot;
+  if (snapshot) {
+    const fetched = snapshot.fetchedAt ? stampText(new Date(snapshot.fetchedAt)) : '未知';
+    setText('#cacheInfo', cached ? `${fetched}（服务端缓存）` : fetched);
+  }
+
+  const list = $('#sampleList');
+  list.replaceChildren();
+  const stocks = Array.isArray(snapshot?.stocks) ? snapshot.stocks : [];
+  if (!stocks.length) {
+    const item = el('li', 'sample-empty', '名单在首次取数后按数据源原样显示');
+    list.append(item);
+    return;
+  }
+  const passing = new Set((state.result && !state.stale ? state.result.rows || [] : [])
+    .filter(row => row.status === 'pass').map(row => row.code));
+  stocks.forEach(stock => {
+    const item = el('li');
+    if (passing.has(stock.code)) item.classList.add('is-pass');
+    item.append(el('span', null, stock.name || '未命名'));
+    item.title = `${stock.code || '无代码'}${passing.has(stock.code) ? ' · 本次筛选通过' : ''}`;
+    list.append(item);
+  });
+}
+
+/* ---------- 条件 ---------- */
+
+function normalizeCondition(raw, index = 0) {
+  let value = raw?.value;
+  if (typeof value === 'string') value = value.trim() === '' ? NaN : Number(value);
+  else if (value == null) value = NaN;
+  else value = Number(value);
+  const id = typeof raw?.id === 'string' && raw.id.trim() ? raw.id.trim().slice(0, 80) : `c${index + 1}-${Date.now().toString(36)}`;
+  const known = metrics().some(item => item.id === raw?.metric);
+  return {
+    id,
+    metric: known ? raw.metric : metrics()[0]?.id || 'pe_ttm',
+    op: OP_LABEL[raw?.op] ? raw.op : 'lt',
+    value,
+    origin: typeof raw?.origin === 'string' ? raw.origin.slice(0, 400) : '用户设置',
+    edited: Boolean(raw?.edited),
+  };
+}
+
+function conditionRow(condition, index) {
+  const row = el('div', 'cond');
+  row.dataset.id = condition.id;
+  if (condition.edited) row.classList.add('is-edited');
+  if (state.conflictIds.includes(condition.id)) row.classList.add('is-conflict');
+  const supported = Array.isArray(state.snapshot?.supportedMetrics) && !state.historical ? state.snapshot.supportedMetrics : null;
+
+  const line = el('div', 'cond-line');
+  line.append(el('span', 'cond-idx', String(index + 1)));
+
+  const metricSelect = el('select', 'metric-select');
+  metricSelect.setAttribute('aria-label', `第 ${index + 1} 条指标`);
+  metrics().forEach(item => {
+    const option = el('option', null, item.label);
+    option.value = item.id;
+    option.selected = item.id === condition.metric;
+    metricSelect.append(option);
+  });
+
+  const opSelect = el('select', 'op-select');
+  opSelect.setAttribute('aria-label', `第 ${index + 1} 条比较方式`);
+  Object.entries(OP_LABEL).forEach(([key, label]) => {
+    const option = el('option', null, label);
+    option.value = key;
+    option.selected = key === condition.op;
+    opSelect.append(option);
+  });
+
+  const input = el('input', 'value-input');
+  input.type = 'number';
+  input.step = 'any';
+  input.value = Number.isFinite(condition.value) ? String(condition.value) : '';
+  input.setAttribute('aria-label', `第 ${index + 1} 条阈值`);
+  if (!Number.isFinite(condition.value)) input.classList.add('is-invalid');
+
+  const unit = el('span', 'cond-unit', metric(condition.metric).unit || '');
+  const period = el('span', 'cond-period', metric(condition.metric).period ? `口径 ${metric(condition.metric).period}` : '口径未标注');
+
+  const remove = el('button', 'remove-btn', '×');
+  remove.type = 'button';
+  remove.setAttribute('aria-label', `删除第 ${index + 1} 条条件`);
+
+  const commit = (fromInput = false) => {
+    const target = state.conditions.find(item => item.id === condition.id);
+    if (!target) return;
+    target.metric = metricSelect.value;
+    target.op = opSelect.value;
+    target.value = input.value.trim() === '' ? NaN : Number(input.value);
+    target.edited = true;
+    unit.textContent = metric(target.metric).unit || '';
+    period.textContent = metric(target.metric).period ? `口径 ${metric(target.metric).period}` : '口径未标注';
+    input.classList.toggle('is-invalid', !Number.isFinite(target.value));
+    row.classList.add('is-edited');
+    state.conflictIds = [];
+    row.classList.remove('is-conflict');
+    onConditionsChanged(fromInput);
+  };
+
+  metricSelect.addEventListener('change', () => commit());
+  opSelect.addEventListener('change', () => commit());
+  input.addEventListener('input', () => commit(true));
+  input.addEventListener('change', () => commit());
+  remove.addEventListener('click', () => {
+    state.conditions = state.conditions.filter(item => item.id !== condition.id);
+    state.conflictIds = [];
+    onConditionsChanged();
+    renderConditions();
+  });
+
+  line.append(metricSelect, remove);
+  const rule = el('div', 'cond-line cond-rule');
+  rule.append(opSelect, input, unit, period);
+  row.append(line, rule);
+
+  if (condition.origin) {
+    const origin = el('div', 'cond-origin');
+    const manual = /手动/.test(condition.origin);
+    origin.append(el('span', condition.edited ? 'mini mini-ink' : manual ? 'mini' : 'mini mini-brand', condition.edited ? '已修改' : manual ? '手动' : '来自描述'));
+    origin.append(el('span', null, condition.origin));
+    row.append(origin);
+  }
+  if (supported && !supported.includes(condition.metric)) {
+    const note = el('div', 'cond-origin');
+    note.append(el('span', 'mini mini-warn', '未取到'));
+    note.append(el('span', null, '本次数据快照不含此字段，核验会显示数据不足；不会为它悄悄换数据。'));
+    row.append(note);
+  }
+  return row;
+}
+
+function renderConditions() {
+  const list = $('#conditionsList');
+  list.replaceChildren();
+  state.conditions.forEach((condition, index) => list.append(conditionRow(condition, index)));
+  updateActions();
+}
+
+/** 条件被编辑：旧结果立即标成待更新，必须重新筛选才能保存或导出；在飞的取数或核验作废。 */
+function onConditionsChanged(fromInput = false) {
+  state.run += 1;
+  if (state.busy) {
+    state.busy = false;
+    $('#resultsSkeleton').hidden = true;
+    if (!state.result) $('#emptyResults').hidden = false;
+    setStage('verify', 'idle', '条件已修改，等你点筛选');
+  }
+  if (state.historical) {
+    updateActions();
+    return;
+  }
+  if (state.result) {
+    state.stale = true;
+    markResultStale(fromInput ? '条件正在修改，下面仍是上一次的结果。' : '条件已修改，下面仍是上一次的结果，点按这些条件筛选可在同一份数据上更新。');
+  }
+  updateActions();
+}
+
+function markResultStale(text) {
+  $('#resultsContent').classList.add('is-stale');
+  setText('#staleText', text);
+  $('#refetchBtn').hidden = !snapshotExpired();
+  $('#staleBanner').hidden = false;
+  setText('#snapshotTag', '结果待更新');
+  $('#snapshotTag').className = 'tag tag-warn';
+  renderUniverse();
+}
+
+function clearStaleBanner() {
+  $('#staleBanner').hidden = true;
+  $('#refetchBtn').hidden = true;
+  $('#resultsContent').classList.remove('is-stale');
+}
+
+function updateActions() {
+  const blocked = Boolean(state.intent?.blocked);
+  const complete = conditionsComplete();
+  const upToDate = Boolean(state.result) && !state.stale && !state.historical;
+  const canScreen = !state.busy && !blocked && complete && state.draftValid && !upToDate;
+  $('#confirmBtn').disabled = !canScreen;
+  const editingResult = Boolean(state.result) && state.resultMatchesIntent && !state.historical;
+  $('#confirmBtn').textContent = state.historical ? '用这些条件重新查询'
+    : editingResult ? '更新结果' : '按这些条件筛选';
+  const unsupportedCount = (state.intent?.unsupported || []).length;
+
+  const exportable = Boolean(state.result) && !state.stale;
+  $('#saveBtn').disabled = !exportable || state.historical;
+  $('#exportBtn').disabled = !exportable;
+  $('#manualBtn').hidden = !(state.intent && (blocked || (state.intent.unsupported || []).length || state.conditions.length));
+
+  if (state.busy) setText('#confirmHint', '正在处理，请稍候');
+  else if (blocked) setText('#confirmHint', '这条请求不能执行，请改写描述或改为手动条件');
+  else if (!state.conditions.length) setText('#confirmHint', state.intent ? '没有可执行的条件，请手动添加' : '等待输入');
+  else if (!complete) setText('#confirmHint', '有条件缺少数值，补齐后才能筛选');
+  else if (!state.draftValid) setText('#confirmHint', '输入已修改，请点开始筛选重新理解');
+  else if (!editingResult && !state.historical && unsupportedCount) setText('#confirmHint', `只核验左侧条件，${unsupportedCount} 项暂不支持的要求不会执行`);
+  else if (!editingResult && !state.historical && state.needsConfirmation) setText('#confirmHint', '核对上面的解释和阈值，确认后自动取数核验');
+  else if (state.historical) setText('#confirmHint', '历史结果仅供查看；重新查询会获取最新数据，不复用历史快照');
+  else if (editingResult && state.stale && snapshotExpired()) setText('#confirmHint', '数据快照已过期，请先重新获取数据');
+  else if (editingResult && state.stale) setText('#confirmHint', `在同一份数据（${dateText(state.snapshot?.asOf)}）上重新核验，增减会逐条说明`);
+  else if (editingResult) setText('#confirmHint', '结果已是最新；修改任一条件后可更新');
+  else setText('#confirmHint', `共 ${state.conditions.length} 条条件，同时满足才通过`);
+}
+
+/* ---------- 解析结果与提示 ---------- */
+
+function renderMessages(intent) {
+  const list = $('#messageList');
+  list.replaceChildren();
+  if (!intent) return;
+
+  const modeText = intent.mode === 'llm' ? '大模型解析，条件可直接修改'
+    : intent.mode === 'manual' ? '手动条件，由你定义'
+    : '规则解析模式，未调用大模型';
+  list.append(el('p', 'msg msg-mode', modeText));
+
+  if (intent.blocked) {
+    const box = el('p', 'msg msg-danger');
+    box.append(el('b', null, '这条请求不能执行：'));
+    box.append(document.createTextNode(intent.blockReason || '请改为可核验的指标条件。'));
+    list.append(box);
+  }
+
+  const unsupported = (intent.unsupported || []).filter(item => typeof item === 'string' && item.trim());
+  if (unsupported.length) {
+    const box = el('div', 'msg msg-danger');
+    box.append(el('b', null, '以下要求当前无法表达，不会悄悄丢掉：'));
+    const items = el('ul', 'msg-list');
+    unsupported.forEach(text => items.append(el('li', null, text)));
+    box.append(items);
+    box.append(el('span', null, '当前不会执行筛选。请改写描述，或明确改为手动条件后重新定义。'));
+    list.append(box);
+  }
+
+  const clarifications = (intent.clarifications || []).filter(item => item && (item.question || item.explanation)).slice(0, 3);
+  if (clarifications.length) {
+    const box = el('div', 'clar-list');
+    box.append(el('div', 'clar-head', '这句话里有需要你拍板的地方，条件已按下面的理解填好，可直接改：'));
+    clarifications.forEach((item, index) => {
+      const row = el('div', 'clar-item');
+      row.append(el('span', 'clar-idx', String(index + 1)));
+      const copy = el('div');
+      copy.append(el('strong', null, item.question || '请确认这一条的口径'));
+      if (item.explanation) copy.append(el('span', null, item.explanation));
+      row.append(copy);
+      box.append(row);
+    });
+    if (!state.needsConfirmation && state.resultMatchesIntent) {
+      const details = el('details', 'confirmed-assumptions');
+      details.append(el('summary', null, '已确认的条件含义与口径'));
+      details.append(box);
+      list.append(details);
+    } else list.append(box);
+  }
+
+  const warnings = (intent.warnings || []).filter(text => typeof text === 'string' && text.trim()).slice(0, 4);
+  if (warnings.length) {
+    const notes = el('ul', 'note-list');
+    warnings.forEach(text => notes.append(el('li', null, text)));
+    list.append(notes);
+  }
+}
+
+function renderIntent(intent, text) {
+  state.intent = intent;
+  state.parsedText = text;
+  state.draftValid = true;
+  state.resultMatchesIntent = false;
+  state.conditions = (intent.conditions || []).map((item, index) => normalizeCondition(item, index));
+  state.conflictIds = [];
+  const needs = intent.needsConfirmation === true
+    || Boolean(intent.blocked)
+    || (intent.unsupported || []).length > 0
+    || (intent.clarifications || []).length > 0;
+  state.needsConfirmation = needs;
+  setText('#parseSummary', intent.summary || (state.conditions.length ? '已生成可编辑条件' : '没有识别出可执行条件'));
+  if (state.result) {
+    state.stale = true;
+    state.historical = false;
+    markResultStale('已理解新的描述，下面仍是上一次的结果。');
+  }
+  const mode = $('#parserMode');
+  mode.textContent = intent.mode === 'llm' ? '大模型解析' : intent.mode === 'manual' ? '手动条件' : '规则解析';
+  mode.className = needs ? 'tag tag-warn' : 'tag';
+  renderMessages(intent);
   renderConditions();
 }
 
-function markStale(reason = '条件或数据源已变更，请重新确认并筛选。') {
-  nextVersion('screen');
-  state.stale = true;
-  state.result = null;
-  $('#resultsContent').hidden = true;
-  $('#emptyResults').hidden = false;
-  setText('#resultsSub', reason);
-  setText('#snapshotTag', '结果已过期');
-  $('#snapshotTag').className = 'snapshot-tag';
-  updateConfirmState();
+/* ---------- 结果渲染 ---------- */
+
+function valueCell(check) {
+  const evidence = check?.evidence || {};
+  const cell = el('td', `col-metric cell-${check?.result || 'unknown'}`);
+  const item = metric(check?.condition?.metric);
+  cell.dataset.label = `${item.label} ${OP_SIGN[check?.condition?.op] || ''} ${numberText(check?.condition?.value)}${item.unit || ''}`;
+  const wrap = el('span', 'val');
+  const known = typeof evidence.value === 'number' && Number.isFinite(evidence.value) && check?.result !== 'unknown';
+  wrap.append(el('span', 'val-num', known ? numberText(evidence.value) : '未知'));
+  if (known && (evidence.unit || item.unit)) wrap.append(el('span', 'val-unit', evidence.unit || item.unit));
+  wrap.append(el('span', 'val-mark', check?.result === 'pass' ? '✓' : check?.result === 'fail' ? '×' : '?'));
+  cell.append(wrap);
+  const years = String(check?.condition?.metric || '').endsWith('_yoy_annual') ? annualYearShort(evidence) : '';
+  const sub = years || evidence.period || item.period || '口径未标注';
+  const unknownReason = { missing: '缺值', stale: '数据过期', error: '读取错误' }[evidence.status] || '口径信息不全';
+  cell.append(el('span', 'val-sub', known ? `${sub} · ${dateText(evidence.asOf)}` : unknownReason));
+  return cell;
 }
 
-function saveJSON(value) {
+function renderTable(rows) {
+  const conditions = state.resultConditions || [];
+  const scroll = el('div', 'table-scroll');
+  const table = el('table', 'result-table');
+
+  const headRow = el('tr');
+  headRow.append(el('th', 'col-pick', '对比'), el('th', null, '标的'), el('th', 'col-industry', '行业'));
+  conditions.forEach(condition => {
+    const item = metric(condition.metric);
+    const th = el('th', 'col-metric');
+    th.append(el('span', 'th-metric', item.label));
+    th.append(el('span', 'th-rule', `${OP_SIGN[condition.op] || condition.op} ${numberText(condition.value)}${item.unit || ''}`));
+    headRow.append(th);
+  });
+  headRow.append(el('th', null, '结论'), el('th', 'col-act', '证据'));
+  const head = el('thead');
+  head.append(headRow);
+
+  const body = el('tbody');
+  rows.forEach(row => {
+    const tr = el('tr');
+    tr.tabIndex = 0;
+    if (state.compareCodes.includes(row.code)) tr.classList.add('is-picked');
+
+    const pick = el('td', 'col-pick');
+    const pickBtn = el('button', 'pick-btn', state.compareCodes.includes(row.code) ? '已选' : '选取');
+    pickBtn.type = 'button';
+    pickBtn.setAttribute('aria-pressed', String(state.compareCodes.includes(row.code)));
+    pickBtn.disabled = !state.compareCodes.includes(row.code) && state.compareCodes.length >= 3;
+    pickBtn.addEventListener('click', event => {
+      event.stopPropagation();
+      togglePick(row.code);
+    });
+    pick.append(pickBtn);
+
+    const stock = el('td', 'col-stock');
+    const cell = el('div', 'stock-cell');
+    cell.append(el('span', 'stock-name', row.name || '未命名'), el('span', 'stock-code', row.code || '无代码'));
+    stock.append(cell);
+
+    const industry = el('td', 'col-industry', row.industry || '未分类');
+
+    tr.append(pick, stock, industry);
+    conditions.forEach(condition => {
+      const check = (row.checks || []).find(item => item.condition?.id === condition.id)
+        || (row.checks || []).find(item => item.condition?.metric === condition.metric);
+      tr.append(valueCell(check));
+    });
+
+    const status = el('td', 'col-status');
+    status.append(el('span', `status-pill status-${row.status}`, STATUS_LABEL[row.status] || '未知'));
+    tr.append(status);
+
+    const act = el('td', 'col-act');
+    const link = el('button', 'evidence-link', '查看');
+    link.type = 'button';
+    link.addEventListener('click', event => {
+      event.stopPropagation();
+      openEvidence(row);
+    });
+    act.append(link);
+    tr.append(act);
+
+    tr.addEventListener('click', () => openEvidence(row));
+    tr.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openEvidence(row);
+      }
+    });
+    body.append(tr);
+  });
+
+  table.append(head, body);
+  scroll.append(table);
+  return scroll;
+}
+
+const EMPTY_COPY = {
+  pass: ['没有标的同时满足全部条件', '可以放宽某一条阈值后再筛选，或到未通过分组里看差在哪一条。'],
+  fail: ['没有被排除的标的', '当前条件下所有样本都通过或数据不足。'],
+  unknown: ['没有数据不足的标的', '本次每条条件都取到了可核验的数值。'],
+};
+
+function renderRows() {
+  const root = $('#overviewTab');
+  root.replaceChildren();
+  const rows = (state.result?.rows || []).filter(row => row.status === state.filter);
+  if (!rows.length) {
+    let [title, copy] = EMPTY_COPY[state.filter] || EMPTY_COPY.pass;
+    if (state.filter === 'pass' && (state.result?.rows || []).length) {
+      const tightest = (state.resultConditions || []).map(condition => ({
+        condition,
+        matched: state.result.rows.filter(row => (row.checks || []).some(check => check.condition?.id === condition.id && check.result === 'pass')).length,
+      })).sort((a, b) => a.matched - b.matched)[0];
+      if (tightest) copy = `最紧的一条是 ${shortRule(tightest.condition)}，只有 ${tightest.matched} 家满足。可在左侧放宽后点更新结果，或到未通过分组看差在哪一条。`;
+    }
+    const box = el('div', 'tab-empty');
+    box.append(el('strong', null, title), el('span', null, copy));
+    root.append(box);
+    return;
+  }
+  root.append(renderTable(rows));
+}
+
+function renderFunnel(result) {
+  const list = $('#funnel');
+  list.replaceChildren();
+  const total = result.counts?.total ?? (result.rows || []).length;
+  (state.resultConditions || []).forEach(condition => {
+    const item = metric(condition.metric);
+    const matched = (result.rows || []).filter(row => (row.checks || [])
+      .some(check => check.condition?.id === condition.id && check.result === 'pass')).length;
+    const node = el('li');
+    if (matched <= Math.max(1, Math.round(total * 0.25))) node.classList.add('is-tight');
+    node.append(el('span', null, `${item.label} ${OP_SIGN[condition.op] || ''} ${numberText(condition.value)}${item.unit || ''}`));
+    node.append(el('b', null, `${matched}/${total}`));
+    list.append(node);
+  });
+}
+
+function passes(value, condition) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  switch (condition.op) {
+    case 'gt': return value > condition.value;
+    case 'gte': return value >= condition.value;
+    case 'lt': return value < condition.value;
+    case 'lte': return value <= condition.value;
+    case 'eq': return value === condition.value;
+    default: return null;
+  }
+}
+
+function shortRule(condition) {
+  const item = metric(condition.metric);
+  return `${item.label} ${OP_SIGN[condition.op] || condition.op} ${numberText(condition.value)}${item.unit || ''}`;
+}
+
+/** 条件层面的变化：按条件 id 对齐，说清哪条阈值从多少改到多少。 */
+function conditionChanges(previous, next) {
+  const before = new Map(previous.map(item => [item.id, item]));
+  const after = new Map(next.map(item => [item.id, item]));
+  const changes = [];
+  next.forEach(item => {
+    const old = before.get(item.id);
+    if (!old) changes.push(`新增 ${shortRule(item)}`);
+    else if (old.metric !== item.metric || old.op !== item.op || old.value !== item.value) changes.push(`${shortRule(old)} 改为 ${shortRule(item)}`);
+  });
+  previous.forEach(item => {
+    if (!after.has(item.id)) changes.push(`删除 ${shortRule(item)}`);
+  });
+  return changes;
+}
+
+/** 单只标的为什么进出：用本次证据值分别对照新旧阈值。 */
+function stockReason(row, previous, kind) {
+  const before = new Map(previous.map(item => [item.id, item]));
+  const reasons = [];
+  (row?.checks || []).forEach(check => {
+    const condition = check.condition || {};
+    const value = check.evidence?.value;
+    const old = before.get(condition.id);
+    const label = `${metric(condition.metric).label} ${numberText(value)}${metric(condition.metric).unit || ''}`;
+    if (kind === 'removed' && check.result !== 'pass') {
+      if (check.result === 'unknown') reasons.push(`${metric(condition.metric).label} 数据不足`);
+      else if (!old) reasons.push(`${label} 不满足新增条件 ${OP_SIGN[condition.op]} ${numberText(condition.value)}`);
+      else if (passes(value, old) === true) reasons.push(`${label} 原先满足，不满足新阈值 ${OP_SIGN[condition.op]} ${numberText(condition.value)}`);
+      else reasons.push(`${label} 不满足 ${OP_SIGN[condition.op]} ${numberText(condition.value)}`);
+    }
+    if (kind === 'added' && check.result === 'pass' && old && old.metric === condition.metric && passes(value, old) === false) {
+      reasons.push(`${label} 原先不满足 ${OP_SIGN[old.op]} ${numberText(old.value)}，现满足 ${OP_SIGN[condition.op]} ${numberText(condition.value)}`);
+    }
+  });
+  if (kind === 'added' && !reasons.length) {
+    const dropped = previous.filter(item => !(row?.checks || []).some(check => check.condition?.id === item.id));
+    if (dropped.length) reasons.push(`删除了条件 ${dropped.map(shortRule).join('、')}`);
+  }
+  return reasons.slice(0, 2).join('；');
+}
+
+function renderDiff(result, previous) {
+  const box = $('#diffBox');
+  box.replaceChildren();
+  const diff = result.diff;
+  if (!diff || !Array.isArray(previous)) {
+    box.hidden = true;
+    return;
+  }
+  const current = state.resultConditions || [];
+  const changes = conditionChanges(previous, current);
+  const head = el('div', 'diff-head');
+  head.append(el('strong', null, '与上一次条件对比'));
+  head.append(el('span', 'tag tag-brand diff-count', `通过 ${diff.baselineCount} 家 → ${diff.currentCount} 家`));
+  head.append(el('span', 'hint', `同一份数据 · ${dateText(state.snapshot?.asOf)}，变化只来自条件`));
+  box.append(head);
+
+  const list = el('ul', 'diff-list');
+  const line = (tagClass, tag, strong, detail) => {
+    const item = el('li');
+    item.append(el('span', tagClass, tag));
+    const copy = el('span');
+    if (strong) copy.append(el('b', null, strong));
+    if (detail) copy.append(document.createTextNode(strong ? `：${detail}` : detail));
+    item.append(copy);
+    list.append(item);
+  };
+  line('mini', '条件', '', changes.length ? changes.join('；') : '条件没有变化');
+  const rowOf = code => (result.rows || []).find(row => row.code === code);
+  (Array.isArray(diff.added) ? diff.added : []).forEach(code => {
+    const row = rowOf(code);
+    line('mini mini-ink', '新进', row?.name || code, stockReason(row, previous, 'added'));
+  });
+  (Array.isArray(diff.removed) ? diff.removed : []).forEach(code => {
+    const row = rowOf(code);
+    line('mini mini-brand', '移出', row?.name || code, stockReason(row, previous, 'removed'));
+  });
+  const kept = Array.isArray(diff.unchanged) ? diff.unchanged : [];
+  if (kept.length) line('mini', '保持', '', kept.map(code => rowOf(code)?.name || code).join('、'));
+  box.append(list);
+  box.hidden = false;
+}
+
+function renderResult(result, { historical = false, previous = null } = {}) {
+  state.result = result;
+  state.resultMatchesIntent = true;
+  state.resultConditions = (result.conditions || []).map((item, index) => normalizeCondition(item, index));
+  state.stale = false;
+  state.historical = historical;
+  state.compareCodes = [];
+  state.filter = 'pass';
+  $('#compareTab').hidden = true;
+
+  clearStaleBanner();
+  $('#resultsSkeleton').hidden = true;
+  $('#emptyResults').hidden = true;
+  $('#resultsContent').hidden = false;
+
+  const counts = result.counts || {};
+  setText('#heroCount', counts.pass ?? 0);
+  setText('#heroText', `家通过全部 ${state.resultConditions.length} 条条件，共核验 ${counts.total ?? 0} 家样本`);
+
+  const tag = $('#snapshotTag');
+  tag.textContent = historical ? '历史记录' : `数据日期 ${dateText(state.snapshot?.asOf)}`;
+  tag.className = historical ? 'tag tag-warn' : 'tag tag-brand';
+  setText('#resultsSub', historical
+    ? '这是本浏览器保存的历史结果，不代表当前行情；要按现在的数据筛选请点按这些条件筛选。'
+    : `按 ${state.resultConditions.length} 条条件逐项核验：${state.snapshot?.source || '数据来源见证据'} · 数据日期 ${dateText(state.snapshot?.asOf)}`);
+
+  ['pass', 'fail', 'unknown'].forEach(name => {
+    const button = $(`#tab${name === 'pass' ? 'Pass' : name === 'fail' ? 'Fail' : 'Unknown'}`);
+    button.querySelector('b').textContent = String(counts[name] ?? 0);
+    button.setAttribute('aria-selected', String(state.filter === name));
+  });
+  setText('#tabNote', '未通过优先于数据不足，单项结论仍逐条保留');
+
+  if (!historical && state.intent) {
+    renderMessages(state.intent);
+    setText('#parseSummary', `已按 ${result.conditions?.length || state.conditions.length} 条条件完成筛选，可直接修改阈值。`);
+    setText('#queryHint', '筛选完成。修改条件后可基于同一快照查看变化。');
+    $('#parserMode').className = 'tag';
+  }
+  renderFunnel(result);
+  renderDiff(result, historical ? null : previous);
+  renderRows();
+  renderCompare();
+
+  const warnings = (result.warnings || []).filter(text => typeof text === 'string').slice(0, 3);
+  setText('#resultFoot', [
+    historical ? '历史记录，不可当作当前数据使用' : '数值、口径、日期与来源逐项可查，缺值显示未知且不会通过',
+    ...warnings,
+  ].join(' · '));
+
+  $('#compareTray').hidden = (counts.pass ?? 0) < 2 && (result.rows || []).length < 2;
+  renderUniverse();
+  updateActions();
+}
+
+/* ---------- 候选对比 ---------- */
+
+function togglePick(code) {
+  if (!code) return;
+  if (state.compareCodes.includes(code)) state.compareCodes = state.compareCodes.filter(item => item !== code);
+  else if (state.compareCodes.length < 3) state.compareCodes.push(code);
+  renderRows();
+  renderCompare();
+}
+
+function renderCompare() {
+  const tray = $('#compareTray');
+  setText('#compareCount', state.compareCodes.length);
+  const rows = (state.result?.rows || []).filter(row => state.compareCodes.includes(row.code));
+  setText('#compareNames', rows.length ? rows.map(row => row.name || row.code).join('、') : '从表格里选 2 到 3 只做横向对比');
+  $('#compareBtn').disabled = rows.length < 2;
+  if (tray.hidden) $('#compareTab').hidden = true;
+
+  const view = $('#compareTab');
+  if (!rows.length) {
+    view.replaceChildren();
+    view.hidden = true;
+    return;
+  }
+  if (view.hidden) return;
+  view.replaceChildren();
+
+  const head = el('div', 'compare-head');
+  head.append(el('strong', null, '候选横向对比'));
+  head.append(el('span', 'hint', '同一份数据快照内的逐项数值，不含推荐或收益判断'));
+  view.append(head);
+
+  const table = el('table', 'compare-table');
+  const headRow = el('tr');
+  headRow.append(el('th', null, '对比项'));
+  rows.forEach(row => headRow.append(el('th', null, row.name || row.code || '未命名')));
+  const thead = el('thead');
+  thead.append(headRow);
+
+  const body = el('tbody');
+  const codeRow = el('tr');
+  codeRow.append(el('td', null, '代码'));
+  rows.forEach(row => codeRow.append(el('td', null, row.code || '无代码')));
+  body.append(codeRow);
+
+  const industryRow = el('tr');
+  industryRow.append(el('td', null, '行业'));
+  rows.forEach(row => industryRow.append(el('td', null, row.industry || '未分类')));
+  body.append(industryRow);
+
+  (state.resultConditions || []).forEach(condition => {
+    const item = metric(condition.metric);
+    const tr = el('tr');
+    tr.append(el('td', null, `${item.label}（${item.unit || '无单位'} · ${item.period || '口径未标注'}）`));
+    rows.forEach(row => {
+      const check = (row.checks || []).find(entry => entry.condition?.id === condition.id)
+        || (row.checks || []).find(entry => entry.condition?.metric === condition.metric);
+      const evidence = check?.evidence || {};
+      const known = typeof evidence.value === 'number' && Number.isFinite(evidence.value) && check?.result !== 'unknown';
+      const td = el('td');
+      td.append(el('span', `val ${known ? '' : 'val-unknown'}`.trim(), known ? `${numberText(evidence.value)}${evidence.unit || item.unit || ''}` : '未知'));
+      td.append(el('span', 'val-sub', STATUS_LABEL[check?.result] || '数据不足'));
+      tr.append(td);
+    });
+    body.append(tr);
+  });
+
+  const statusRow = el('tr');
+  statusRow.append(el('td', null, '本次结论'));
+  rows.forEach(row => {
+    const td = el('td');
+    td.append(el('span', `status-pill status-${row.status}`, STATUS_LABEL[row.status] || '未知'));
+    statusRow.append(td);
+  });
+  body.append(statusRow);
+
+  table.append(thead, body);
+  view.append(table);
+  view.hidden = false;
+}
+
+/* ---------- 证据 ---------- */
+
+/** 年度同比的起止年：只读取证据里带年份语义的字段，读不到就如实说没有。 */
+function annualYears(evidence) {
+  const years = { base: '', current: '' };
+  const visit = (object, depth, hint) => {
+    if (!object || typeof object !== 'object' || depth > 2) return;
+    for (const [key, value] of Object.entries(object)) {
+      const label = `${hint} ${key}`;
+      if (value && typeof value === 'object') {
+        visit(value, depth + 1, label);
+        continue;
+      }
+      // Only explicit years/date strings count; never infer a year from timestamp digits.
+      const normalized = typeof value === 'number' && value >= 1900 && value <= 2099 && Number.isInteger(value) ? String(value) : typeof value === 'string' && /^((?:19|20)\d{2})(?:$|[-/])/.test(value) ? value : '';
+      const match = normalized.match(/^(?:19|20)\d{2}/);
+      if (!match || !/year|period|date|end|年/i.test(key)) continue;
+      if (/base|prev|previous|last|first|start|denominator|上年|基/i.test(label)) years.base = years.base || match[0];
+      else years.current = years.current || match[0];
+    }
+  };
+  visit(evidence?.raw, 0, '');
+  if (!years.base && years.current && /^\d{4}$/.test(years.current)) {
+    years.base = '';
+  }
+  return years;
+}
+
+function annualYearText(evidence) {
+  const { base, current } = annualYears(evidence);
+  if (base && current) return `${base} 年度 → ${current} 年度（相邻两个完整年度）`;
+  if (current) return `报告年度 ${current}，基准年度数据源未标注`;
+  return '';
+}
+
+function annualYearShort(evidence) {
+  const { base, current } = annualYears(evidence);
+  return base && current ? `${base}→${current} 年度` : '';
+}
+
+function evidenceRow(grid, label, value, strong = false) {
+  grid.append(el('dt', null, label));
+  grid.append(el('dd', strong ? 'ev-strong' : null, value));
+}
+
+function openEvidence(row) {
+  setText('#dialogKicker', `${STATUS_LABEL[row.status] || '未知'} · 逐项证据`);
+  setText('#dialogTitle', `${row.name || '标的'}（${row.code || '无代码'}）`);
+  const body = $('#dialogBody');
+  body.replaceChildren();
+
+  const meta = el('div', 'ev-meta');
+  meta.append(el('span', 'tag', row.industry || '未分类'));
+  meta.append(el('span', 'tag', `数据日期 ${dateText(state.snapshot?.asOf)}`));
+  meta.append(el('span', 'tag', state.historical ? '历史记录' : state.snapshotMode === 'demo' ? '合成演示数据' : '自动取数'));
+  body.append(meta);
+
+  (row.checks || []).forEach(check => {
+    const condition = check.condition || {};
+    const evidence = check.evidence || {};
+    const item = metric(condition.metric);
+    const block = el('div', 'ev-check');
+
+    const title = el('div', 'ev-title');
+    title.append(el('strong', null, item.label));
+    title.append(el('span', 'mini', `要求 ${OP_LABEL[condition.op] || condition.op || '未设置'} ${numberText(condition.value)}${item.unit || ''}`));
+    title.append(el('span', `status-pill status-${check.result}`, STATUS_LABEL[check.result] || '未知'));
+    block.append(title);
+
+    const grid = el('dl', 'ev-grid');
+    const known = typeof evidence.value === 'number' && Number.isFinite(evidence.value) && check.result !== 'unknown';
+    evidenceRow(grid, '实际值', known ? `${numberText(evidence.value)}${evidence.unit || item.unit || ''}` : '未知', true);
+    evidenceRow(grid, '阈值', `${numberText(condition.value)}${item.unit || ''}`);
+    evidenceRow(grid, '单位', evidence.unit || item.unit || '无单位');
+    evidenceRow(grid, '口径', evidence.period || item.period || '未标注');
+    if (String(condition.metric || '').endsWith('_yoy_annual')) {
+      evidenceRow(grid, '起止年度', annualYearText(evidence) || '数据源未提供起止年度，见下方原始值');
+    }
+    evidenceRow(grid, '数据日期', dateText(evidence.asOf));
+    evidenceRow(grid, '来源', evidence.source || '未提供');
+    evidenceRow(grid, '字段', evidence.field || '未提供');
+    evidenceRow(grid, '单项原因', check.reason || evidence.note || '未提供');
+    if (evidence.note) evidenceRow(grid, '来源备注', evidence.note);
+    if (condition.origin) evidenceRow(grid, '条件来历', condition.origin);
+
+    const url = safeUrl(evidence.sourceUrl);
+    if (url) {
+      grid.append(el('dt', null, '来源链接'));
+      const dd = el('dd');
+      const link = el('a', null, url);
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      dd.append(link);
+      grid.append(dd);
+    }
+    if (evidence.raw !== undefined) {
+      grid.append(el('dt', null, '原始值'));
+      const dd = el('dd');
+      let text;
+      try {
+        text = typeof evidence.raw === 'object' ? JSON.stringify(evidence.raw, null, 2) : String(evidence.raw);
+      } catch {
+        text = '无法展示';
+      }
+      dd.append(el('pre', 'raw-box', text.slice(0, 1200)));
+      grid.append(dd);
+    }
+    block.append(grid);
+    body.append(block);
+  });
+
+  if (!(row.checks || []).length) body.append(el('p', 'hint', '这一行没有逐项证据。'));
+  const dialog = $('#evidenceDialog');
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+}
+
+/* ---------- 主流程 ---------- */
+
+function beginBusy(run) {
+  state.busy = true;
+  clearError();
+  if (state.result) $('#resultsContent').classList.add('is-stale');
+  else {
+    $('#emptyResults').hidden = true;
+    $('#resultsSkeleton').hidden = false;
+  }
+  updateActions();
+  return run;
+}
+
+function endBusy() {
+  state.busy = false;
+  $('#resultsSkeleton').hidden = true;
+  if (!state.result) $('#emptyResults').hidden = false;
+  if (!state.stale) $('#resultsContent').classList.remove('is-stale');
+  updateActions();
+}
+
+async function startFlow() {
+  const text = $('#intentInput').value.trim();
+  if (!text) {
+    setText('#queryHint', '先用一句话描述你想找的股票，或点上面的示例。');
+    $('#intentInput').focus();
+    return;
+  }
+  if (state.busy && text === state.parsedText) return;
+  const run = ++state.run;
+  beginBusy(run);
+  setText('#queryHint', '');
+  setStage('understand', 'active', '正在理解这句话');
+  setStage('data', 'idle', '等待条件确定');
+  setStage('verify', 'idle', '等待数据');
+
+  let intent;
   try {
-    localStorage.setItem('stock-lens:last', JSON.stringify(value));
+    intent = await api('/api/interpret', { method: 'POST', body: JSON.stringify({ text }) });
+  } catch (error) {
+    if (!current(run)) return;
+    endBusy();
+    setStage('understand', 'error', '没能理解这句话');
+    showError('model', error.message, () => startFlow());
+    return;
+  }
+  if (!current(run)) return;
+
+  renderIntent(intent, text);
+
+  if (intent.blocked) {
+    endBusy();
+    setStage('understand', 'error', '这条请求不能执行');
+    setStage('data', 'idle', '未取数');
+    setStage('verify', 'idle', '未核验');
+    return;
+  }
+  if (!state.conditions.length) {
+    endBusy();
+    setStage('understand', 'wait', '没有识别出可执行条件');
+    setStage('data', 'idle', '未取数');
+    return;
+  }
+  if (state.needsConfirmation) {
+    endBusy();
+    setStage('understand', 'wait', `已给出 ${state.conditions.length} 条可改条件，等你确认`);
+    setStage('data', 'idle', '确认后自动取数');
+    setText('#queryHint', '这句话有需要拍板的地方，确认左侧条件后点按这些条件筛选。');
+    return;
+  }
+  setStage('understand', 'done', `明确条件 ${state.conditions.length} 条，无需确认`);
+  await runScreen(run);
+}
+
+async function confirmFlow(force = false) {
+  if (!force && $('#confirmBtn').disabled) return;
+  if (!conditionsComplete() || state.intent?.blocked) return;
+  if (state.historical) {
+    // 历史快照只用于查看，重新查询必须取新数据。
+    state.historical = false;
+    state.snapshot = null;
+    state.result = null;
+    state.resultConditions = null;
+    state.stale = false;
+    $('#resultsContent').hidden = true;
+    clearStaleBanner();
+  }
+  if (state.result && state.resultMatchesIntent && !force && snapshotExpired()) {
+    state.stale = true;
+    markResultStale('数据快照已超过有效期，需要重新获取数据后再核验；条件会保留，不用再确认。');
+    setStage('data', 'wait', '数据快照已过期，点重新获取数据');
+    updateActions();
+    return;
+  }
+  const run = ++state.run;
+  beginBusy(run);
+  setStage('understand', 'done', `已确认 ${state.conditions.length} 条条件`);
+  await runScreen(run);
+}
+
+async function runScreen(run) {
+  if (!current(run)) return;
+  if (!conditionsComplete()) {
+    endBusy();
+    showError('input', '有条件还没有填数值，补齐后再筛选。');
+    renderConditions();
+    return;
+  }
+
+  const reuse = state.snapshot && !state.historical && !snapshotExpired() && state.snapshotMode === state.requestedMode;
+  if (!reuse) {
+    setStage('data', 'active', state.requestedMode === 'demo' ? '正在准备合成演示数据' : '正在自动获取 12 家样本的行情与财务字段');
+    let snapshot;
+    try {
+      snapshot = await api('/api/snapshot', { method: 'POST', body: JSON.stringify({ mode: state.requestedMode }) });
+    } catch (error) {
+      if (!current(run)) return;
+      endBusy();
+      setStage('data', 'error', '取数失败，没有生成结果');
+      state.snapshot = null;
+      state.historical = false;
+      renderUniverse();
+      showError('data', `${error.message} 不会自动改用演示数据。`, () => confirmFlow(true), { offerDemo: state.requestedMode !== 'demo' });
+      return;
+    }
+    if (!current(run)) return;
+    state.snapshot = snapshot;
+    state.snapshotMode = snapshot.mode === 'demo' ? 'demo' : state.requestedMode;
+    state.snapshotLocalAt = Date.now();
+    state.historical = false;
+    state.baseline = null;
+    $('#demoBanner').hidden = state.snapshotMode !== 'demo';
+    renderUniverse();
+    const supported = Array.isArray(snapshot.supportedMetrics) ? snapshot.supportedMetrics.length : null;
+    setStage('data', 'done', `${snapshot.source || '数据源'} · 数据日期 ${dateText(snapshot.asOf)}${supported ? ` · 可用字段 ${supported} 个` : ''}`);
+  } else {
+    setStage('data', 'done', `沿用本次数据快照 · 数据日期 ${dateText(state.snapshot.asOf)}`);
+  }
+
+  setStage('verify', 'active', `正在逐项核验 ${state.conditions.length} 条条件`);
+  const payload = {
+    snapshotId: state.snapshot.id,
+    conditions: state.conditions.map(item => ({ id: item.id, metric: item.metric, op: item.op, value: item.value, origin: item.origin })),
+    confirmed: true,
+  };
+  if (state.baseline && state.baseline.snapshotId === state.snapshot.id) payload.baselineConditions = state.baseline.conditions;
+
+  let result;
+  try {
+    result = await api('/api/screen', { method: 'POST', body: JSON.stringify(payload) });
+  } catch (error) {
+    if (!current(run)) return;
+    endBusy();
+    const conflicts = Array.isArray(error.payload?.conflicts) ? error.payload.conflicts : [];
+    if (conflicts.length) {
+      state.conflictIds = conflicts.flatMap(item => (Array.isArray(item.conditionIds) ? item.conditionIds : []));
+      renderConditions();
+      setStage('verify', 'error', '条件之间互相冲突');
+      showError('screen', '条件冲突：' + conflicts.map(item => item.message || '条件存在冲突').join('；') + '。请调整标红的条件。');
+      return;
+    }
+    if (error.status === 410) {
+      setStage('data', 'error', '数据快照已过期');
+      setStage('verify', 'idle', '未核验');
+      state.snapshotLocalAt = 0;
+      if (state.result) {
+        state.stale = true;
+        markResultStale('这份数据快照已经过期，需要重新获取数据后才能再核验。');
+      }
+      showError('data', '数据快照已过期，请重新获取数据后再筛选。已显示的结果属于上一次取数。', () => refetch(), { offerDemo: false });
+      return;
+    }
+    setStage('verify', 'error', '核验没有完成');
+    showError('screen', error.message, () => confirmFlow(true));
+    return;
+  }
+  if (!current(run)) return;
+
+  const previous = payload.baselineConditions ? clone(payload.baselineConditions) : null;
+  state.baseline = { snapshotId: state.snapshot.id, conditions: clone(payload.conditions) };
+  state.conflictIds = [];
+  state.conditions.forEach(item => { item.edited = false; });
+  renderConditions();
+  renderResult(result, { previous });
+  setStage('verify', 'done', `${result.counts?.pass ?? 0} 家通过，${result.counts?.fail ?? 0} 家未通过，${result.counts?.unknown ?? 0} 家数据不足`);
+  endBusy();
+}
+
+async function refetch() {
+  state.snapshot = null;
+  state.snapshotLocalAt = 0;
+  state.baseline = null;
+  renderUniverse();
+  await confirmFlow(true);
+}
+
+/* ---------- 手动条件 ---------- */
+
+function askManual() {
+  setText('#manualConfirmText', state.conditions.length
+    ? `改为手动会清空当前 ${state.conditions.length} 条条件，并放弃这句话里暂不支持的要求。`
+    : '改为手动后，由你自己选择指标、比较方式和阈值。');
+  $('#manualConfirm').hidden = false;
+}
+
+function enterManual() {
+  state.run += 1;
+  state.busy = false;
+  state.resultMatchesIntent = false;
+  $('#resultsSkeleton').hidden = true;
+  $('#manualConfirm').hidden = true;
+  state.intent = { mode: 'manual', summary: '手动设置条件', conditions: [], clarifications: [], warnings: ['手动条件不经过模型解析，口径与阈值由你负责。'], unsupported: [], blocked: false };
+  state.conditions = [];
+  state.conflictIds = [];
+  state.parsedText = $('#intentInput').value.trim();
+  state.draftValid = true;
+  state.needsConfirmation = false;
+  setText('#parseSummary', '手动设置条件：添加指标、比较方式和阈值后筛选。');
+  const first = metrics()[0];
+  if (first) {
+    state.conditions.push(normalizeCondition({ metric: first.id, op: first.defaultOp || 'lt', value: first.defaultValue, origin: '手动添加' }, 0));
+  }
+  setStage('understand', 'wait', '手动条件，等你确认');
+  renderMessages(state.intent);
+  renderConditions();
+  if (state.result) {
+    state.stale = true;
+    markResultStale('已改为手动条件，下面仍是上一次的结果。');
+  }
+}
+
+/* ---------- 数据与口径 ---------- */
+
+function renderDataDialog() {
+  const body = $('#dataBody');
+  body.replaceChildren();
+
+  const scope = el('div', 'info-sec');
+  scope.append(el('h3', null, '观察范围'));
+  scope.append(el('p', null, `${state.universe?.label || '12 家 A 股观察样本'}：${state.universe?.description || '用于产品研究的有限观察样本，不是全市场筛选。'}`));
+  body.append(scope);
+
+  const source = el('div', 'info-sec');
+  source.append(el('h3', null, '本次数据'));
+  if (!state.snapshot) {
+    source.append(el('p', null, '还没有取数。点开始筛选时会自动获取一份数据快照，来源与日期会显示在这里。'));
+  } else {
+    const table = el('table', 'info-table');
+    const tbody = el('tbody');
+    const rows = [
+      ['数据模式', state.snapshotMode === 'demo' ? '合成演示数据（非真实行情）' : '自动取数'],
+      ['来源', state.snapshot.source || '未命名'],
+      ['数据日期', dateText(state.snapshot.asOf)],
+      ['获取时间', state.snapshot.fetchedAt ? stampText(new Date(state.snapshot.fetchedAt)) : '未知'],
+      ['服务端缓存', state.snapshot.cached ? `是，缓存 ${Math.round(Number(state.snapshot.cacheAgeSeconds) || 0)} 秒` : '否'],
+      ['快照有效期', `${Number(state.ttlMinutes) || DEFAULT_TTL_MINUTES} 分钟，过期后需重新获取`],
+    ];
+    if (Array.isArray(state.snapshot.providerSummary) && state.snapshot.providerSummary.length) {
+      rows.push(['取数说明', state.snapshot.providerSummary.filter(item => typeof item === 'string').join('；')]);
+    }
+    if (Array.isArray(state.snapshot.supportedMetrics) && state.snapshot.supportedMetrics.length) {
+      rows.push(['可用字段', state.snapshot.supportedMetrics.map(id => metric(id).label).join('、')]);
+    }
+    const warnings = (state.snapshot.warnings || []).filter(text => typeof text === 'string');
+    if (warnings.length) rows.push(['来源提示', warnings.join('；')]);
+    rows.forEach(([label, value]) => {
+      const tr = el('tr');
+      tr.append(el('td', null, label), el('td', null, value));
+      tbody.append(tr);
+    });
+    table.append(tbody);
+    source.append(table);
+  }
+  body.append(source);
+
+  const catalog = el('div', 'info-sec');
+  catalog.append(el('h3', null, '指标口径'));
+  catalog.append(el('p', null, '单位与口径都取自服务端指标目录，前端不另外换算。缺值一律显示未知，不会通过筛选。'));
+  const table = el('table', 'info-table');
+  const thead = el('thead');
+  const headRow = el('tr');
+  ['指标', '单位', '口径', '说明'].forEach(text => headRow.append(el('th', null, text)));
+  thead.append(headRow);
+  const tbody = el('tbody');
+  metrics().forEach(item => {
+    const tr = el('tr');
+    tr.append(el('td', null, item.label), el('td', null, item.unit || '无'), el('td', null, item.period || '未标注'), el('td', null, item.description || '见来源备注'));
+    tbody.append(tr);
+  });
+  table.append(thead, tbody);
+  catalog.append(table);
+  body.append(catalog);
+
+  setText('#demoHint', state.snapshotMode === 'demo'
+    ? '当前已在演示数据，公司与数值均为虚构。'
+    : '演示数据是合成样本，只能体验流程，不能用于研究真实股票。');
+  $('#demoBtn').textContent = state.snapshotMode === 'demo' ? '切回真实数据' : '使用合成演示数据';
+}
+
+async function switchMode(mode, { run = false } = {}) {
+  state.requestedMode = mode;
+  state.snapshot = null;
+  state.snapshotMode = mode;
+  state.snapshotLocalAt = 0;
+  state.baseline = null;
+  state.historical = false;
+  state.result = null;
+  state.resultConditions = null;
+  state.stale = false;
+  state.run += 1;
+  $('#demoBanner').hidden = mode !== 'demo';
+  $('#resultsContent').hidden = true;
+  clearStaleBanner();
+  $('#emptyResults').hidden = false;
+  setText('#resultsSub', mode === 'demo'
+    ? '已切到合成演示数据，筛选结果只用于体验流程。'
+    : '已切回自动取数，点按这些条件筛选会重新获取真实数据。');
+  renderUniverse();
+  resetStages(state.conditions.length ? '条件仍在左侧，可直接筛选' : '等待输入');
+  clearError();
+  updateActions();
+  if (run && state.conditions.length && conditionsComplete() && state.draftValid && !state.intent?.blocked) await confirmFlow(true);
+}
+
+/* ---------- 本地记录 ---------- */
+
+function readRecords() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(validRecord).slice(0, MAX_RECORDS) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRecords(records) {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(records));
     return true;
   } catch {
     return false;
   }
 }
 
-function readSaved() {
-  try {
-    const raw = localStorage.getItem('stock-lens:last');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+function validRecord(record) {
+  return Boolean(record
+    && record.schema === SCHEMA
+    && record.snapshot && typeof record.snapshot.id === 'string'
+    && Array.isArray(record.conditions) && record.conditions.length
+    && record.conditions.every(item => item && typeof item.metric === 'string')
+    && record.result && record.result.counts && Array.isArray(record.result.rows));
 }
 
-function removeSaved() {
-  try {
-    localStorage.removeItem('stock-lens:last');
-  } catch {
-    // 浏览器拒绝访问本地存储时，页面仍可继续使用。
-  }
-}
-
-function nowLabel(date = new Date()) {
-  return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'medium',
-    timeStyle: 'short'
-  }).format(date);
-}
-
-function conditionCopy(condition) {
-  const item = metric(condition.metric);
-  const value = Number.isFinite(condition.value) ? condition.value : '未填写';
-  return `${item.label} ${opLabels[condition.op] || condition.op || '未设置'} ${value}${item.unit}`;
-}
-
-function normalizeCondition(condition, index = 0) {
-  let value = condition?.value;
-  if (typeof value === 'string') {
-    value = value.trim() === '' ? NaN : Number(value);
-  } else if (value == null) {
-    value = NaN;
-  } else {
-    value = Number(value);
-  }
-  return {
-    id: condition?.id || `condition-${Date.now()}-${index}`,
-    metric: condition?.metric || 'pe_ttm',
-    op: condition?.op || 'lt',
-    value,
-    origin: condition?.origin || '用户确认'
-  };
-}
-
-function renderConditionOptions(select, selected) {
-  select.replaceChildren();
-  (state.catalog?.metrics || metricFallback).forEach(item => {
-    const option = document.createElement('option');
-    option.value = item.id;
-    option.textContent = `${item.label}（${item.unit}）`;
-    option.selected = item.id === selected;
-    select.append(option);
+function buildRecord() {
+  return clone({
+    schema: SCHEMA,
+    title: state.intent?.summary || '选股记录',
+    savedAt: stampText(),
+    savedAtISO: new Date().toISOString(),
+    query: state.parsedText,
+    mode: state.snapshotMode,
+    historical: false,
+    snapshot: state.snapshot,
+    conditions: state.conditions.map(item => ({ id: item.id, metric: item.metric, op: item.op, value: item.value, origin: item.origin })),
+    result: state.result,
+    baselineConditions: state.baseline?.conditions || null,
   });
 }
 
-function conditionRow(condition) {
-  const row = document.createElement('div');
-  row.className = 'condition-row';
-  row.dataset.id = condition.id;
-
-  const metricSelect = document.createElement('select');
-  metricSelect.className = 'metric-select';
-  metricSelect.setAttribute('aria-label', '指标');
-  renderConditionOptions(metricSelect, condition.metric);
-
-  const operationSelect = document.createElement('select');
-  operationSelect.className = 'op-select';
-  operationSelect.setAttribute('aria-label', '比较方式');
-  Object.entries(opLabels).forEach(([key, label]) => {
-    const option = document.createElement('option');
-    option.value = key;
-    option.textContent = label;
-    option.selected = key === condition.op;
-    operationSelect.append(option);
-  });
-
-  const valueInput = document.createElement('input');
-  valueInput.type = 'number';
-  valueInput.step = 'any';
-  valueInput.value = Number.isFinite(condition.value) ? String(condition.value) : '';
-  valueInput.setAttribute('aria-label', '阈值');
-
-  const unit = document.createElement('span');
-  unit.className = 'step-badge';
-  unit.textContent = metric(condition.metric).unit || '';
-
-  const remove = document.createElement('button');
-  remove.className = 'remove-btn';
-  remove.type = 'button';
-  remove.setAttribute('aria-label', '删除条件');
-  remove.textContent = '×';
-
-  const update = () => {
-    const current = state.conditions.find(item => item.id === condition.id);
-    if (!current) return;
-    current.metric = metricSelect.value;
-    current.op = operationSelect.value;
-    current.value = valueInput.value.trim() === '' ? NaN : Number(valueInput.value);
-    current.origin = '用户编辑';
-    unit.textContent = metric(current.metric).unit || '';
-    markStale();
-  };
-
-  metricSelect.addEventListener('change', update);
-  operationSelect.addEventListener('change', update);
-  valueInput.addEventListener('change', update);
-  valueInput.addEventListener('input', () => {
-    const current = state.conditions.find(item => item.id === condition.id);
-    if (!current) return;
-    current.value = valueInput.value.trim() === '' ? NaN : Number(valueInput.value);
-    current.origin = '用户编辑';
-    markStale('条件正在编辑，请完成后重新筛选。');
-  });
-  remove.addEventListener('click', () => {
-    state.conditions = state.conditions.filter(item => item.id !== condition.id);
-    markStale('条件已删除，请确认剩余条件后重新筛选。');
-  });
-
-  row.append(metricSelect, operationSelect, valueInput, unit, remove);
-  return row;
-}
-
-function hasBlockingIntent() {
-  return Boolean(
-    state.intent?.blocked
-    || state.intent?.unsupported?.length
-    || (state.intent?.clarifications?.length && !state.clarificationAccepted)
-  );
-}
-
-function updateConfirmState() {
-  const complete = state.conditions.length > 0
-    && state.conditions.every(condition => Number.isFinite(condition.value));
-  const canConfirm = complete
-    && Boolean(state.snapshot)
-    && !state.snapshotHistorical
-    && state.intentFresh
-    && !hasBlockingIntent()
-    && (!state.stale || !state.result);
-  $('#confirmBtn').disabled = !canConfirm;
-
-  if (!state.snapshot) setText('#confirmHint', '请先加载数据源');
-  else if (state.snapshotHistorical) setText('#confirmHint', '历史记录仅供查看，请重新加载数据源');
-  else if (!state.intentFresh) setText('#confirmHint', '请重新解析当前输入');
-  else if (hasBlockingIntent()) setText('#confirmHint', '请确认解释后再筛选，或改为手动定义条件');
-  else if (!complete) setText('#confirmHint', '请补全条件');
-  else if (state.stale) setText('#confirmHint', '请确认条件后筛选');
-  else setText('#confirmHint', '条件将按 AND 组合');
-}
-
-function renderConditions() {
-  const list = $('#conditionsList');
-  list.replaceChildren();
-  state.conditions.forEach(condition => list.append(conditionRow(condition)));
-  updateConfirmState();
-}
-
-function renderMessages(intent) {
-  const list = $('#messageList');
-  list.replaceChildren();
-  const messages = [];
-  if (intent?.mode === 'rules') {
-    messages.push({ text: '规则解析模式，未调用大模型。请逐条核对后确认。', type: '' });
-  } else if (intent?.mode === 'llm') {
-    messages.push({ text: '模型解析结果仅供参考，请确认每一条条件。', type: '' });
-  }
-  (intent?.clarifications || []).forEach(item => {
-    messages.push({ text: item.question || item.explanation || '这段意图需要进一步明确。', type: 'warning' });
-  });
-  (intent?.warnings || []).forEach(text => messages.push({ text, type: 'warning' }));
-  (intent?.unsupported || []).forEach(text => messages.push({ text: `暂不支持：${text}`, type: 'danger' }));
-  if (intent?.blocked) {
-    messages.push({ text: intent.blockReason || '这段请求暂时无法解析。', type: 'danger' });
-  }
-  if ((intent?.conditions || []).some(item => item.metric === 'volatility_20d')) {
-    messages.push({
-      text: '波动率口径：20 日收益率标准差年化，按 √252 处理，显示为百分比。',
-      type: 'warning'
-    });
-  }
-  if (!messages.length) messages.push({ text: '未发现额外提示，请核对条件的指标、单位和方向。', type: '' });
-
-  messages.forEach(item => {
-    const paragraph = document.createElement('p');
-    paragraph.className = `message ${item.type}`;
-    paragraph.textContent = item.text;
-    list.append(paragraph);
-  });
-
-  if (intent?.clarifications?.length && !state.clarificationAccepted) {
-    const acceptLabel = document.createElement('label');
-    acceptLabel.className = 'clarification-accept';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = false;
-    checkbox.addEventListener('change', () => {
-      state.clarificationAccepted = checkbox.checked;
-      if (state.clarificationAccepted) {
-        const current = document.createElement('p');
-        current.className = 'message';
-        current.textContent = '已接受以上解释。条件仍可编辑，请确认后筛选。';
-        list.insertBefore(current, acceptLabel);
-      }
-      renderConditions();
-    });
-    const text = document.createElement('span');
-    text.textContent = '我已理解并接受以上解释，保留这些条件供我继续编辑';
-    acceptLabel.append(checkbox, text);
-    list.append(acceptLabel);
-  }
-
-  if (intent?.blocked || intent?.unsupported?.length || (intent?.clarifications?.length && !state.clarificationAccepted)) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'button button-secondary';
-    button.textContent = '改为手动定义条件';
-    button.addEventListener('click', () => {
-      state.intent = { mode: 'manual', summary: '手动定义条件', conditions: [], warnings: [], unsupported: [], clarifications: [], blocked: false };
-      state.conditions = [];
-      state.intentFresh = true;
-      state.clarificationAccepted = false;
-      setText('#parseSummary', '手动定义条件');
-      setText('#parserMode', '手动模式 · 由你确认');
-      renderMessages(state.intent);
-      renderConditions();
-    });
-    list.append(button);
-  }
-}
-
-function renderIntent(intent, text) {
-  state.intent = intent;
-  state.clarificationAccepted = false;
-  state.parsedText = text;
-  state.intentFresh = true;
-  state.conditions = (intent.conditions || []).map(normalizeCondition);
-  $('#parseResult').hidden = false;
-  setText('#parseSummary', intent.summary || '已生成可编辑条件');
-  setText('#parserMode', intent.mode === 'llm' ? '模型解析 · 待确认' : '规则解析模式 · 未调用大模型');
-  setText('#parserNote', intent.mode === 'llm' ? '当前使用模型解析，请确认结果' : '规则解析模式，未调用大模型');
-  renderMessages(intent);
-  renderConditions();
-}
-
-async function interpret() {
-  const text = $('#intentInput').value.trim();
-  if (!text) {
-    showError('请先描述一段选股想法。', '还没有输入');
-    return;
-  }
-  clearError();
-  const version = nextVersion('interpret');
-  $('#interpretBtn').disabled = true;
-  setText('#parserNote', '正在解析，请稍候');
-  try {
-    const intent = await api('/api/interpret', {
-      method: 'POST',
-      body: JSON.stringify({ text })
-    });
-    if (!isCurrent('interpret', version)) return;
-    renderIntent(intent, text);
-    markStale('条件已更新，请确认后筛选。');
-  } catch (error) {
-    if (isCurrent('interpret', version)) {
-      showError(friendlyError(error), '解析没有完成', interpret);
-    }
-  } finally {
-    if (isCurrent('interpret', version)) {
-      $('#interpretBtn').disabled = false;
-      if (!state.intentFresh) setText('#parserNote', '输入后解析模式将由服务返回');
-    }
-  }
-}
-
-async function loadCatalog() {
-  const version = nextVersion('catalog');
-  try {
-    const catalog = await api('/api/catalog');
-    if (isCurrent('catalog', version)) {
-      state.catalog = catalog;
-      if (state.conditions.length) renderConditions();
-    }
-  } catch {
-    if (isCurrent('catalog', version)) state.catalog = { metrics: metricFallback };
-  }
-}
-
-function updateDataDisclosure(mode) {
-  const disclosures = {
-    demo: ['合成演示数据，非真实行情', '12家虚构公司仅用于体验完整流程，不可据此研究真实股票。'],
-    ifind: ['iFinD 授权固定日期快照', '财务报告期2026年9月30日，估值交易日2026年11月6日，非实时行情。当前核验市盈率、市净率和加权净资产收益率，其他字段可能未知。一次加载包含6次工具查询，可能消耗账号额度；仅限授权研究，保存或导出不代表允许再分发。'],
-    fuyao: ['扶摇金融数据', '使用服务端配置的数据权限取数，来源、时点和口径以逐项证据为准。'],
-    public: ['公开数据来源', '非全市场覆盖。口径或时间无法核实的字段保持未知，不使用其他来源偷偷补值。'],
-  };
-  const [title, copy] = disclosures[mode] || disclosures.demo;
-  setText('#disclosureTitle', title);
-  setText('#disclosureCopy', copy);
-  $('#disclosure').hidden = false;
-}
-
-function setDataSourceSummary(snapshot) {
-  const source = $('#sourceSummary');
-  source.replaceChildren();
-  const icon = document.createElement('div');
-  icon.className = 'source-icon';
-  icon.textContent = '✓';
-  const copyElement = document.createElement('div');
-  const strong = document.createElement('strong');
-  strong.textContent = snapshot.source || '数据源已加载';
-  const paragraph = document.createElement('p');
-  paragraph.textContent = `${snapshot.universe?.label || '观察样本'} · ${snapshot.warnings?.[0] || '数据口径以来源记录为准'}`;
-  copyElement.append(strong, paragraph);
-  source.append(icon, copyElement);
-
-  const asOf = snapshot.asOf ? nowLabel(new Date(snapshot.asOf)) : '未知';
-  const fetched = snapshot.fetchedAt ? nowLabel(new Date(snapshot.fetchedAt)) : '未知';
-  const meta = $('#sourceMeta');
-  meta.replaceChildren();
-  ['来源：' + (snapshot.source || '未命名'), `数据截至：${asOf}`, `加载于：${fetched}`].forEach(text => {
-    const span = document.createElement('span');
-    span.textContent = text;
-    meta.append(span);
-  });
-
-  const mode = state.snapshotMode || snapshot.mode;
-  updateDataDisclosure(mode);
-  setText('#modeTitle', `${modeLabels[mode] || '数据源'}${state.snapshotHistorical ? '历史记录已恢复' : '已加载'}`);
-  setText('#modeDescription', mode === 'demo' ? '合成演示数据，非真实行情' : '以服务返回的来源、日期和口径为准');
-  $('#modeDot').className = 'status-dot ok';
-}
-
-async function loadData() {
-  const mode = $('#dataMode').value;
-  updateDataDisclosure(mode);
-  clearError();
-  resetSnapshot('正在加载数据源，请稍候。', false);
-  const version = nextVersion('snapshot');
-  $('#loadDataBtn').disabled = true;
-  setText('#dataStatus', '加载中');
-  setText('#modeTitle', `${modeLabels[mode] || '数据源'}加载中`);
-  setText('#modeDescription', '正在获取此来源的固定快照');
-  try {
-    const snapshot = await api('/api/snapshot', {
-      method: 'POST',
-      body: JSON.stringify({ mode })
-    });
-    if (!isCurrent('snapshot', version)) return;
-    state.snapshot = snapshot;
-    state.snapshotMode = mode;
-    state.snapshotHistorical = false;
-    state.stale = true;
-    setDataSourceSummary(snapshot);
-    setText('#dataStatus', '已加载');
-    setText('#snapshotTag', '快照已加载');
-    $('#emptyResults').hidden = false;
-    $('#resultsContent').hidden = true;
-    setText('#resultsSub', '快照已就绪，确认条件后开始筛选。');
-    renderConditions();
-  } catch (error) {
-    if (isCurrent('snapshot', version)) {
-      resetSnapshot('数据源加载失败，请按错误提示重试。', false);
-      setText('#dataStatus', '加载失败');
-      showError(friendlyError(error), '数据源没有加载', loadData);
-    }
-  } finally {
-    if (isCurrent('snapshot', version)) $('#loadDataBtn').disabled = false;
-  }
-}
-
-function createStat(label, value) {
-  const element = document.createElement('div');
-  element.className = 'stat-card';
-  const labelElement = document.createElement('span');
-  labelElement.textContent = label;
-  const valueElement = document.createElement('strong');
-  valueElement.textContent = value;
-  element.append(labelElement, valueElement);
-  return element;
-}
-
-function renderStats(result) {
-  const row = $('#statsRow');
-  row.replaceChildren();
-  row.append(
-    createStat('通过', result.counts?.pass ?? 0),
-    createStat('未通过', result.counts?.fail ?? 0),
-    createStat('未知', result.counts?.unknown ?? 0),
-    createStat('样本总数', result.counts?.total ?? 0)
-  );
-}
-
-function statusLabel(status) {
-  return status === 'pass' ? '通过' : status === 'fail' ? '未通过' : '未知';
-}
-
-function showRowEvidence(row) {
-  setText('#dialogTitle', `${row.name || '标的'} · 证据`);
-  const body = $('#dialogBody');
-  body.replaceChildren();
-  (row.checks || []).forEach(check => {
-    const evidence = check.evidence || {};
-    const detail = document.createElement('dl');
-    detail.className = 'dialog-row';
-    const label = document.createElement('dt');
-    label.textContent = conditionCopy(check.condition || {});
-    const value = document.createElement('dd');
-    const shownValue = evidence.value == null ? '未知' : `${evidence.value}${evidence.unit || ''}`;
-    value.textContent = `${statusLabel(check.result)} · ${shownValue} · ${evidence.period || '期间未知'} · ${evidence.asOf || '日期未知'}`;
-
-    const source = document.createElement('p');
-    source.textContent = `来源：${evidence.source || '未提供'} · 字段：${evidence.field || '未提供'}`;
-    value.append(source);
-    const reason = document.createElement('p');
-    reason.textContent = `判断说明：${check.reason || evidence.note || '未提供'}`;
-    value.append(reason);
-    if (evidence.note) {
-      const note = document.createElement('p');
-      note.textContent = `来源备注：${evidence.note}`;
-      value.append(note);
-    }
-    const raw = document.createElement('p');
-    raw.textContent = `原始值：${evidence.raw == null ? '未提供' : JSON.stringify(evidence.raw)}`;
-    value.append(raw);
-
-    const url = safeUrl(evidence.sourceUrl);
-    if (url) {
-      const link = document.createElement('a');
-      link.href = url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.textContent = '查看来源链接';
-      value.append(link);
-    }
-    detail.append(label, value);
-    body.append(detail);
-  });
-  const dialog = $('#evidenceDialog');
-  if (typeof dialog.showModal === 'function') dialog.showModal();
-}
-
-function renderOverview(result) {
-  const root = $('#overviewTab');
+function renderRecords() {
+  const root = $('#savedList');
   root.replaceChildren();
-  const scroll = document.createElement('div');
-  scroll.className = 'overview-scroll';
-  const table = document.createElement('table');
-  table.className = 'result-table';
-  const head = document.createElement('thead');
-  const headerRow = document.createElement('tr');
-  ['标的', '行业', '结论', '条件核验'].forEach(text => {
-    const header = document.createElement('th');
-    header.textContent = text;
-    headerRow.append(header);
-  });
-  head.append(headerRow);
-  const body = document.createElement('tbody');
-
-  (result.rows || []).forEach(row => {
-    const tableRow = document.createElement('tr');
-    const name = document.createElement('td');
-    const strong = document.createElement('span');
-    strong.className = 'stock-name';
-    strong.textContent = row.name || '未命名';
-    const code = document.createElement('span');
-    code.className = 'stock-code';
-    code.textContent = row.code || '未知代码';
-    name.append(strong, code);
-    const industry = document.createElement('td');
-    industry.textContent = row.industry || '未分类';
-    const status = document.createElement('td');
-    const pill = document.createElement('span');
-    pill.className = `status-pill status-${row.status}`;
-    pill.textContent = statusLabel(row.status);
-    status.append(pill);
-    const checks = document.createElement('td');
-    checks.textContent = `${(row.checks || []).filter(item => item.result === 'pass').length}/${(row.checks || []).length} 条通过`;
-    tableRow.append(name, industry, status, checks);
-    tableRow.tabIndex = 0;
-    tableRow.addEventListener('click', () => showRowEvidence(row));
-    tableRow.addEventListener('keydown', event => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        showRowEvidence(row);
-      }
+  if (!state.records.length) {
+    root.append(el('p', 'saved-empty', '还没有记录。完成一次筛选后，点保存到本浏览器会存下条件、数据快照和结果。'));
+    return;
+  }
+  root.append(el('p', 'saved-empty', '记录只存在这台浏览器里，恢复后显示为历史结果，不会当作当前数据使用。'));
+  state.records.forEach((record, index) => {
+    const row = el('div', 'record');
+    const copy = el('div', 'record-copy');
+    copy.append(el('strong', null, record.query || record.title || '选股记录'));
+    copy.append(el('small', null, `保存于 ${record.savedAt || '未知时间'} · 数据日期 ${dateText(record.snapshot?.asOf)} · 通过 ${record.result?.counts?.pass ?? 0} 家 · ${record.mode === 'demo' ? '演示数据' : '自动取数'}`));
+    row.append(copy);
+    const actions = el('div', 'record-actions');
+    const restore = el('button', 'btn btn-ghost btn-sm', '恢复');
+    restore.type = 'button';
+    restore.addEventListener('click', () => {
+      restoreRecord(record);
+      $('#historyDialog').close();
     });
-    body.append(tableRow);
-  });
-
-  table.append(head, body);
-  scroll.append(table);
-  root.append(scroll);
-  const note = document.createElement('p');
-  note.className = 'results-sub';
-  note.textContent = '点击或按回车查看逐字段证据。失败优先于未知，单项核验仍可追溯。';
-  root.append(note);
-}
-
-function renderEvidence(result) {
-  const root = $('#evidenceTab');
-  root.replaceChildren();
-  const grid = document.createElement('div');
-  grid.className = 'evidence-grid';
-  const rows = (result.rows || []).filter(row => row.checks?.length).slice(0, 8);
-  rows.forEach(row => {
-    const card = document.createElement('div');
-    card.className = 'evidence-card';
-    const copyElement = document.createElement('div');
-    const strong = document.createElement('strong');
-    strong.textContent = row.name || row.code || '标的';
-    const paragraph = document.createElement('p');
-    paragraph.textContent = `${row.checks.length} 条字段证据 · ${statusLabel(row.status)}`;
-    copyElement.append(strong, paragraph);
-    const button = document.createElement('button');
-    button.className = 'button button-secondary';
-    button.type = 'button';
-    button.textContent = '查看证据';
-    button.addEventListener('click', () => showRowEvidence(row));
-    card.append(copyElement, button);
-    grid.append(card);
-  });
-  root.append(grid);
-  if (!rows.length) {
-    const paragraph = document.createElement('p');
-    paragraph.className = 'results-sub';
-    paragraph.textContent = '当前结果没有可展示的字段证据。';
-    root.append(paragraph);
-  }
-}
-
-function renderCompare(result) {
-  const root = $('#compareTab');
-  root.replaceChildren();
-  const box = document.createElement('div');
-  box.className = 'compare-box';
-  const title = document.createElement('h3');
-  title.textContent = '同一快照的条件前后变化';
-  const help = document.createElement('p');
-  help.className = 'compare-help';
-  help.textContent = '前后对比只在同一个数据快照中计算，避免把不同时间的数据混在一起。';
-  box.append(title, help);
-
-  const diff = result.diff;
-  if (!diff) {
-    const paragraph = document.createElement('p');
-    paragraph.className = 'compare-help';
-    paragraph.textContent = '这是本次快照的首次筛选。下次在相同快照上修改条件并确认后，会显示新增、移除与保持不变的标的。';
-    box.append(paragraph);
-  } else {
-    const list = document.createElement('div');
-    list.className = 'diff-list';
-    [['新增', diff.added], ['移除', diff.removed], ['不变', diff.unchanged]].forEach(([label, items]) => {
-      const span = document.createElement('span');
-      const strong = document.createElement('b');
-      strong.textContent = `${label} ${items?.length || 0}`;
-      span.append(strong, document.createTextNode(items?.length ? `：${items.join('、')}` : ''));
-      list.append(span);
+    const remove = el('button', 'link-btn', '删除');
+    remove.type = 'button';
+    remove.addEventListener('click', () => {
+      state.records = state.records.filter((_, position) => position !== index);
+      writeRecords(state.records);
+      renderRecords();
     });
-    const paragraph = document.createElement('p');
-    paragraph.className = 'compare-help';
-    paragraph.textContent = `前次通过 ${diff.baselineCount} 家，本次通过 ${diff.currentCount} 家。`;
-    box.append(list, paragraph);
-  }
-  root.append(box);
-
-  const candidates = (result.rows || []).filter(row => row.status === 'pass').slice(0, 8);
-  if (!candidates.length) return;
-  const candidateBox = document.createElement('div');
-  candidateBox.className = 'candidate-box';
-  const candidateTitle = document.createElement('h3');
-  candidateTitle.textContent = '候选对比（可选 2–3 只）';
-  const candidateNote = document.createElement('p');
-  candidateNote.className = 'compare-help';
-  candidateNote.textContent = '仅对比当前同一快照的候选，不代表推荐或收益承诺。';
-  const picker = document.createElement('div');
-  picker.className = 'candidate-picker';
-  candidateBox.append(candidateTitle, candidateNote, picker);
-
-  candidates.forEach(row => {
-    const label = document.createElement('label');
-    label.className = 'candidate-option';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.value = row.code || '';
-    checkbox.checked = state.compareCodes.includes(checkbox.value);
-    checkbox.addEventListener('change', () => {
-      if (checkbox.checked) {
-        if (state.compareCodes.length >= 3) {
-          checkbox.checked = false;
-          return;
-        }
-        state.compareCodes.push(checkbox.value);
-      } else {
-        state.compareCodes = state.compareCodes.filter(code => code !== checkbox.value);
-      }
-    });
-    const text = document.createElement('span');
-    text.textContent = `${row.name || '未命名'}（${row.code || '无代码'}）`;
-    label.append(checkbox, text);
-    picker.append(label);
+    actions.append(restore, remove);
+    row.append(actions);
+    root.append(row);
   });
-
-  const compareButton = document.createElement('button');
-  compareButton.type = 'button';
-  compareButton.className = 'button button-secondary';
-  compareButton.textContent = '生成对比';
-  compareButton.addEventListener('click', () => {
-    candidateBox.querySelector('.candidate-output')?.remove();
-    const selected = candidates.filter(row => state.compareCodes.includes(row.code));
-    if (selected.length < 2) {
-      const hint = document.createElement('p');
-      hint.className = 'compare-help candidate-output';
-      hint.textContent = '请先选择 2–3 只候选。';
-      candidateBox.append(hint);
-      return;
-    }
-    const output = document.createElement('div');
-    output.className = 'candidate-output compare-table';
-    selected.forEach(row => {
-      const item = document.createElement('div');
-      item.className = 'evidence-card';
-      const copyElement = document.createElement('div');
-      const strong = document.createElement('strong');
-      strong.textContent = row.name || row.code || '未命名';
-      const paragraph = document.createElement('p');
-      paragraph.textContent = (row.checks || []).map(check => {
-        const evidence = check.evidence || {};
-        const shown = evidence.value == null ? '未知' : `${evidence.value}${evidence.unit || ''}`;
-        return `${metric(check.condition?.metric).label}：${shown}`;
-      }).join(' · ');
-      copyElement.append(strong, paragraph);
-      item.append(copyElement);
-      output.append(item);
-    });
-    candidateBox.append(output);
-  });
-  candidateBox.append(compareButton);
-  root.append(candidateBox);
-}
-
-function renderResult(result, historical = false) {
-  state.result = result;
-  state.stale = false;
-  state.snapshotHistorical = historical;
-  clearError();
-  $('#emptyResults').hidden = true;
-  $('#resultsContent').hidden = false;
-  setText('#snapshotTag', historical ? '历史记录 · 仅供查看' : `同一快照 · ${result.counts?.pass ?? 0} 家通过`);
-  setText('#resultsSub', historical
-    ? '这是本地保存的历史结果，不代表实时行情。若要重新筛选，请重新加载数据源。'
-    : `已按 ${result.conditions?.length || 0} 条已确认条件筛选 · ${state.snapshot?.asOf ? '数据截至 ' + state.snapshot.asOf : '数据日期未知'}`);
-  renderStats(result);
-  renderOverview(result);
-  renderEvidence(result);
-  renderCompare(result);
-  renderConditions();
-}
-
-async function screen() {
-  if (!state.snapshot) {
-    showError('请先加载数据源，再确认条件。', '还没有数据快照', loadData);
-    return;
-  }
-  if (state.snapshotHistorical) {
-    showError('历史记录仅供查看，请重新加载数据源后再筛选。', '需要重新加载数据', loadData);
-    return;
-  }
-  if (!state.intentFresh || hasBlockingIntent()) {
-    showError('当前输入仍有待处理提示，请重新解析或改为手动定义条件。', '条件尚未确认');
-    return;
-  }
-  if (!state.conditions.length) {
-    showError('请至少添加一条条件。', '条件不能为空');
-    return;
-  }
-  if (state.conditions.some(condition => !Number.isFinite(condition.value))) {
-    showError('请为每条条件填写有效阈值。', '阈值未填写');
-    renderConditions();
-    return;
-  }
-
-  clearError();
-  const version = nextVersion('screen');
-  $('#confirmBtn').disabled = true;
-  setText('#confirmHint', '正在筛选，请稍候');
-  try {
-    const result = await api('/api/screen', {
-      method: 'POST',
-      body: JSON.stringify({
-        snapshotId: state.snapshot.id,
-        conditions: clone(state.conditions),
-        baselineConditions: state.baselineConditions ? clone(state.baselineConditions) : undefined,
-        confirmed: true
-      })
-    });
-    if (!isCurrent('screen', version)) return;
-    state.baselineConditions = clone(state.conditions);
-    renderResult(result);
-  } catch (error) {
-    if (!isCurrent('screen', version)) return;
-    const conflicts = error.payload?.conflicts;
-    if (conflicts?.length) {
-      showError(conflicts.map(item => item.message || '条件存在冲突').join('；'), '条件之间存在冲突', screen);
-    } else {
-      showError(friendlyError(error), error.status === 410 ? '快照已过期' : '筛选没有完成', screen);
-    }
-  } finally {
-    if (isCurrent('screen', version)) {
-      $('#confirmBtn').disabled = false;
-      renderConditions();
-    }
-  }
-}
-
-function validSavedRecord(record) {
-  return Boolean(
-    record
-    && record.schema === 1
-    && record.snapshot
-    && typeof record.snapshot.id === 'string'
-    && Array.isArray(record.conditions)
-    && record.conditions.length > 0
-    && record.conditions.every(condition => condition && typeof condition.metric === 'string')
-    && record.result
-    && record.result.counts
-    && Array.isArray(record.result.rows)
-  );
-}
-
-function renderSaved() {
-  const root = $('#savedContent');
-  root.replaceChildren();
-  if (!state.saved) {
-    const empty = document.createElement('div');
-    empty.className = 'saved-empty';
-    empty.textContent = '暂无保存记录。完成一次筛选后，可保存条件、快照与结果。';
-    root.append(empty);
-    return;
-  }
-  const item = document.createElement('div');
-  item.className = 'saved-record';
-  const copyElement = document.createElement('div');
-  const strong = document.createElement('strong');
-  strong.textContent = state.saved.title || '未命名研究记录';
-  const small = document.createElement('small');
-  small.textContent = `保存于 ${state.saved.savedAt || '未知时间'} · 历史记录，不代表实时行情`;
-  copyElement.append(strong, small);
-  const actions = document.createElement('div');
-  const restore = document.createElement('button');
-  restore.className = 'button button-secondary';
-  restore.type = 'button';
-  restore.textContent = '恢复';
-  restore.addEventListener('click', restoreSaved);
-  const clear = document.createElement('button');
-  clear.className = 'text-button';
-  clear.type = 'button';
-  clear.textContent = '删除';
-  clear.addEventListener('click', () => {
-    removeSaved();
-    state.saved = null;
-    setText('#storageStatus', '本地存储待使用');
-    renderSaved();
-  });
-  actions.append(restore, clear);
-  item.append(copyElement, actions);
-  root.append(item);
 }
 
 function saveCurrent() {
-  if (!state.snapshot || !state.result || state.stale) {
-    showError('请先完成数据加载和一次有效筛选，再保存完整记录。', '暂时不能保存');
+  if (!state.result || state.stale || state.historical) {
+    showError('input', '先完成一次有效筛选再保存，修改过条件的结果需要重新核验。');
     return;
   }
-  const record = clone({
-    schema: 1,
-    title: state.intent?.summary || '选股研究记录',
-    savedAt: nowLabel(),
-    parsedText: state.parsedText,
-    snapshot: state.snapshot,
-    snapshotMode: state.snapshotMode,
-    conditions: state.conditions,
-    result: state.result,
-    baselineConditions: state.baselineConditions
-  });
-  if (!record || !saveJSON(record)) {
-    showError('浏览器存储空间不可用，请改用导出 JSON 保存。', '无法写入本地记录');
+  const record = buildRecord();
+  if (!record) {
+    showError('input', '当前结果无法整理成记录，请改用导出 JSON。');
     return;
   }
-  state.saved = record;
-  setText('#storageStatus', '已保存到本地');
-  renderSaved();
+  const records = [record, ...state.records].slice(0, MAX_RECORDS);
+  if (!writeRecords(records)) {
+    showError('input', '这台浏览器不允许写入本地存储，请改用导出 JSON 保存。');
+    return;
+  }
+  state.records = records;
+  renderRecords();
+  setText('#resultFoot', `已保存到本浏览器（最多 ${MAX_RECORDS} 条）· ${record.savedAt}`);
 }
 
-function restoreSaved() {
-  const record = state.saved || readSaved();
-  if (!validSavedRecord(record)) {
-    showError('本地记录格式无法识别或缺少完整结果，请使用完整 JSON。', '无法恢复记录');
+function restoreRecord(record) {
+  if (!validRecord(record)) {
+    showError('input', '这条本地记录不完整或格式不认识，无法恢复。');
     return;
   }
-  state.saved = clone(record);
-  state.snapshot = clone(record.snapshot);
-  state.snapshotMode = record.snapshotMode || record.snapshot.mode;
-  state.snapshotHistorical = true;
-  state.clarificationAccepted = false;
-  state.intent = {
-    mode: 'manual',
-    summary: record.title || '历史研究条件',
-    conditions: record.conditions,
-    warnings: [],
-    unsupported: [],
-    clarifications: [],
-    blocked: false
-  };
-  state.parsedText = record.parsedText || '';
-  state.intentFresh = true;
-  state.conditions = record.conditions.map(normalizeCondition);
-  state.baselineConditions = clone(record.baselineConditions || record.conditions);
-  $('#parseResult').hidden = false;
+  state.run += 1;
+  state.busy = false;
+  const copy = clone(record);
+  state.historicalRecord = clone(record);
+  state.snapshot = copy.snapshot;
+  state.snapshotMode = copy.mode === 'demo' ? 'demo' : 'auto';
+  state.requestedMode = state.snapshotMode;
+  state.snapshotLocalAt = 0;
+  state.baseline = null;
+  state.conditions = copy.conditions.map((item, index) => normalizeCondition(item, index));
+  state.parsedText = copy.query || '';
+  state.draftValid = true;
+  state.needsConfirmation = false;
+  state.intent = { mode: 'manual', summary: copy.title || '历史记录条件', conditions: copy.conditions, clarifications: [], warnings: ['这是历史记录，数据日期以快照为准，不代表当前行情。'], unsupported: [], blocked: false };
   $('#intentInput').value = state.parsedText;
-  setText('#charCount', `${state.parsedText.length} / 200`);
-  setText('#parseSummary', '历史研究条件');
-  setText('#parserMode', '历史记录 · 由你此前确认');
-  setText('#parserNote', '历史记录不会调用大模型');
+  setText('#charCount', `${state.parsedText.length}/200`);
+  setText('#parseSummary', copy.title || '历史记录条件');
+  $('#parserMode').textContent = '历史记录';
+  $('#parserMode').className = 'tag tag-warn';
+  $('#demoBanner').hidden = state.snapshotMode !== 'demo';
+  clearError();
   renderMessages(state.intent);
-  setDataSourceSummary(state.snapshot);
-  $('#dataMode').value = state.snapshotMode;
-  setText('#dataStatus', '已恢复历史');
-  setText('#storageStatus', '已恢复历史记录');
   renderConditions();
-  renderResult(record.result, true);
-  document.querySelector('#results').scrollIntoView({ behavior: 'smooth' });
+  resetStages('历史记录，未重新取数');
+  setStage('understand', 'done', '历史记录中的条件');
+  setStage('data', 'done', `历史快照 · 数据日期 ${dateText(state.snapshot?.asOf)}`);
+  setStage('verify', 'done', `历史结果 · 通过 ${copy.result?.counts?.pass ?? 0} 家`);
+  renderResult(copy.result, { historical: true });
+  $('#results').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function exportCurrent() {
-  if (!state.snapshot || !state.result || state.stale) {
-    showError('当前还没有可导出的有效结果，请先完成筛选。', '没有可导出的记录');
+  if (!state.result || state.stale) {
+    showError('input', '现在没有可导出的有效结果，先完成一次筛选。');
     return;
   }
-  const data = clone({
-    schema: 1,
-    title: state.intent?.summary || '选股研究记录',
-    savedAt: nowLabel(),
-    parsedText: state.parsedText,
-    snapshot: state.snapshot,
-    snapshotMode: state.snapshotMode,
-    conditions: state.conditions,
-    result: state.result,
-    baselineConditions: state.baselineConditions
-  });
+  const data = state.historical
+    ? clone({ ...(state.historicalRecord || buildRecord()), historical: true, exportedAt: new Date().toISOString(), note: '历史记录导出：数据日期以 snapshot.asOf 为准，不代表导出时点的行情。' })
+    : clone({ ...buildRecord(), exportedAt: new Date().toISOString(), note: '导出内容与界面一致：条件、数据快照与逐项证据未作加工。' });
   if (!data) {
-    showError('当前数据无法整理为导出文件。', '导出没有完成');
+    showError('input', '当前结果无法整理成文件。');
     return;
   }
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = '选股有据-研究记录.json';
+  link.download = state.historical ? '选股有据-历史记录.json' : '选股有据-筛选记录.json';
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/* ---------- 主题 ---------- */
+
 function applyTheme(mode) {
-  state.themePreference = mode;
+  state.theme = mode;
+  const media = window.matchMedia?.('(prefers-color-scheme: dark)');
   if (mode === 'system') {
-    const media = window.matchMedia?.('(prefers-color-scheme: dark)');
     document.documentElement.dataset.theme = media?.matches ? 'dark' : 'light';
     setText('#themeBtn', '跟随系统');
     return;
   }
   document.documentElement.dataset.theme = mode;
-  setText('#themeBtn', mode === 'dark' ? '深色模式' : '浅色模式');
+  setText('#themeBtn', mode === 'dark' ? '深色' : '浅色');
 }
 
-function setupTheme() {
-  applyTheme('system');
-  const media = window.matchMedia?.('(prefers-color-scheme: dark)');
-  media?.addEventListener?.('change', () => {
-    if (state.themePreference === 'system') applyTheme('system');
-  });
-  $('#themeBtn').addEventListener('click', () => {
-    if (state.themePreference === 'system') applyTheme(media?.matches ? 'light' : 'dark');
-    else if (state.themePreference === 'dark') applyTheme('light');
-    else applyTheme('system');
-  });
+/* ---------- 启动 ---------- */
+
+async function loadHealth() {
+  try {
+    const health = await api('/api/health');
+    const ok = Boolean(health.ok);
+    $('#healthDot').className = `status-dot ${ok ? 'ok' : 'warn'}`;
+    const model = health.model?.configured ? '大模型解析可用' : '规则解析模式，未配置大模型';
+    const auto = health.data?.autoAvailable ? '自动取数可用' : '自动取数未配置';
+    setText('#healthText', ok ? `${model} · ${auto}` : '服务暂不可用');
+  } catch {
+    $('#healthDot').className = 'status-dot warn';
+    setText('#healthText', '服务待连接');
+  }
+}
+
+async function loadCatalog() {
+  try {
+    const catalog = await api('/api/catalog');
+    if (Array.isArray(catalog.metrics) && catalog.metrics.length) state.catalog = catalog;
+    if (catalog.universe) state.universe = catalog.universe;
+    if (Number.isFinite(Number(catalog.snapshotTtlMinutes))) state.ttlMinutes = Number(catalog.snapshotTtlMinutes);
+    if (catalog.defaultMode === 'demo' || catalog.defaultMode === 'auto') state.requestedMode = catalog.defaultMode;
+  } catch {
+    state.catalog = { metrics: METRIC_FALLBACK };
+  }
+  renderUniverse();
+  if (state.conditions.length) renderConditions();
 }
 
 function setup() {
-  const saved = readSaved();
-  if (validSavedRecord(saved)) {
-    state.saved = saved;
-    setText('#storageStatus', '有一条本地记录');
-  }
-  renderSaved();
-  setupTheme();
-
-  const healthVersion = nextVersion('health');
-  setText('#healthText', '正在检查连接');
-  api('/api/health').then(health => {
-    if (!isCurrent('health', healthVersion)) return;
-    $('#healthDot').classList.toggle('ok', Boolean(health.ok));
-    const model = health.model?.configured ? `模型已配置：${health.model.name || '已配置'}` : '规则解析模式，未配置模型';
-    setText('#healthText', health.ok ? `服务连接正常 · ${model}` : '服务暂不可用');
-  }).catch(() => {
-    if (!isCurrent('health', healthVersion)) return;
-    $('#healthDot').classList.remove('ok');
-    setText('#healthText', '服务待连接');
+  applyTheme('system');
+  window.matchMedia?.('(prefers-color-scheme: dark)')?.addEventListener?.('change', () => {
+    if (state.theme === 'system') applyTheme('system');
   });
 
+  state.records = readRecords();
+  renderRecords();
+  renderUniverse();
+  resetStages();
+  updateActions();
+  loadHealth();
   loadCatalog();
-  $('#intentInput').addEventListener('input', event => {
-    const text = event.target.value;
-    setText('#charCount', `${text.length} / 200`);
-    if (text.trim() !== state.parsedText) {
-      state.intentFresh = false;
-      markStale('输入已修改，请重新解析当前研究意图。');
-      setText('#parserNote', '输入已改变，请重新解析');
+
+  // 快照有效期到了只提示，不自动重取，避免重复消耗数据额度。
+  setInterval(() => {
+    if (!state.result || state.historical || !state.snapshot || state.busy) return;
+    if (snapshotExpired() && $('#refetchBtn').hidden) {
+      setText('#staleText', state.stale
+        ? '数据快照已超过有效期，再次核验需要重新获取数据；条件会保留，不用再确认。'
+        : `结果仍对应 ${dateText(state.snapshot.asOf)} 的数据快照；快照已超过有效期，再调条件前需重新获取数据。`);
+      $('#refetchBtn').hidden = false;
+      $('#staleBanner').hidden = false;
+      updateActions();
+    }
+  }, 30_000);
+
+  const input = $('#intentInput');
+  input.addEventListener('input', () => {
+    setText('#charCount', `${input.value.length}/200`);
+    if (input.value.trim() === state.parsedText) {
+      state.draftValid = Boolean(state.intent);
+      setText('#queryHint', '');
+      updateActions();
+      return;
+    }
+    // 输入变了，草稿立即失效，但不会自动发请求。
+    state.run += 1;
+    state.busy = false;
+    state.draftValid = false;
+    state.needsConfirmation = false;
+    $('#resultsSkeleton').hidden = true;
+    setText('#queryHint', state.intent ? '输入已修改，点开始筛选重新理解。' : '');
+    if (state.result) {
+      state.stale = true;
+      markResultStale('输入已修改，下面仍是上一次的结果。');
+    }
+    resetStages('输入已修改，等待开始筛选');
+    updateActions();
+  });
+
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      startFlow();
     }
   });
-  $$('.sample-chip').forEach(button => button.addEventListener('click', () => {
-    $('#intentInput').value = button.dataset.sample || '';
-    $('#intentInput').dispatchEvent(new Event('input'));
-    $('#intentInput').focus();
+
+  $$('.sample-chip').forEach(chip => chip.addEventListener('click', () => {
+    input.value = chip.dataset.sample || '';
+    input.dispatchEvent(new Event('input'));
+    input.focus();
   }));
-  $('#interpretBtn').addEventListener('click', interpret);
+
+  $('#interpretBtn').addEventListener('click', startFlow);
+  $('#confirmBtn').addEventListener('click', confirmFlow);
   $('#addConditionBtn').addEventListener('click', () => {
-    state.intentFresh = true;
-    state.conditions.push(normalizeCondition({
-      metric: 'pe_ttm',
-      op: 'lt',
-      value: metric('pe_ttm').defaultValue,
-      origin: '用户添加'
-    }, state.conditions.length));
-    $('#parseResult').hidden = false;
-    markStale('条件已添加，请确认后重新筛选。');
+    const used = new Set(state.conditions.map(item => item.metric));
+    const next = metrics().find(item => !used.has(item.id)) || metrics()[0];
+    if (!next) return;
+    if (!state.intent) {
+      state.intent = { mode: 'manual', summary: '手动设置条件', conditions: [], clarifications: [], warnings: [], unsupported: [], blocked: false };
+      renderMessages(state.intent);
+      setText('#parseSummary', '手动设置条件：添加指标、比较方式和阈值后筛选。');
+    }
+    state.draftValid = true;
+    state.conditions.push(normalizeCondition({ metric: next.id, op: next.defaultOp || 'lt', value: next.defaultValue, origin: '手动添加' }, state.conditions.length));
+    onConditionsChanged();
+    renderConditions();
   });
-  $('#confirmBtn').addEventListener('click', screen);
-  $('#loadDataBtn').addEventListener('click', loadData);
-  $('#retryBtn').addEventListener('click', () => state.retryAction?.());
-  $('#errorRetryBtn').addEventListener('click', () => state.retryAction?.());
-  $('#saveBtn').addEventListener('click', saveCurrent);
-  $('#restoreBtn').addEventListener('click', restoreSaved);
-  $('#exportBtn').addEventListener('click', exportCurrent);
-  $('#dismissDisclosure').addEventListener('click', () => { $('#disclosure').hidden = true; });
-  $('#closeDialog').addEventListener('click', () => $('#evidenceDialog').close());
-  $$('.tab').forEach(tab => tab.addEventListener('click', () => {
-    $$('.tab').forEach(item => {
-      const active = item === tab;
-      item.classList.toggle('active', active);
-      item.setAttribute('aria-selected', String(active));
-    });
-    ['overview', 'evidence', 'compare'].forEach(name => {
-      $(`#${name}Tab`).hidden = name !== tab.dataset.tab;
-    });
+
+  $('#manualBtn').addEventListener('click', askManual);
+  $('#manualEntryBtn').addEventListener('click', askManual);
+  $('#manualCancelBtn').addEventListener('click', () => { $('#manualConfirm').hidden = true; });
+  $('#manualConfirmBtn').addEventListener('click', enterManual);
+
+  $('#retryBtn').addEventListener('click', () => state.retry?.());
+  $('#refetchBtn').addEventListener('click', () => refetch());
+  $('#errorDemoBtn').addEventListener('click', () => switchMode('demo', { run: true }));
+  $('#exitDemoBtn').addEventListener('click', () => switchMode('auto'));
+
+  $$('#resultTabs .tab').forEach(tab => tab.addEventListener('click', () => {
+    state.filter = tab.dataset.filter || 'pass';
+    $$('#resultTabs .tab').forEach(item => item.setAttribute('aria-selected', String(item === tab)));
+    renderRows();
   }));
-  $('#dataMode').addEventListener('change', () => {
-    updateDataDisclosure($('#dataMode').value);
-    resetSnapshot('数据模式已改变，请加载新的数据源。');
-    clearError();
+
+  $('#compareBtn').addEventListener('click', () => {
+    if (state.compareCodes.length < 2) return;
+    $('#compareTab').hidden = false;
+    renderCompare();
+    $('#compareTab').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+  $('#compareClearBtn').addEventListener('click', () => {
+    state.compareCodes = [];
+    $('#compareTab').hidden = true;
+    renderRows();
+    renderCompare();
+  });
+
+  $('#saveBtn').addEventListener('click', saveCurrent);
+  $('#exportBtn').addEventListener('click', exportCurrent);
+  $('#restoreBtn').addEventListener('click', () => {
+    state.records = readRecords();
+    if (state.records.length === 1) {
+      restoreRecord(state.records[0]);
+      return;
+    }
+    renderRecords();
+    const dialog = $('#historyDialog');
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+  });
+  $('#closeHistoryDialog').addEventListener('click', () => $('#historyDialog').close());
+
+  $('#dataInfoBtn').addEventListener('click', () => {
+    renderDataDialog();
+    const dialog = $('#dataDialog');
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+  });
+  $('#closeDataDialog').addEventListener('click', () => $('#dataDialog').close());
+  $('#demoBtn').addEventListener('click', () => {
+    $('#dataDialog').close();
+    switchMode(state.snapshotMode === 'demo' ? 'auto' : 'demo');
+  });
+
+  $('#closeDialog').addEventListener('click', () => $('#evidenceDialog').close());
+  $('#themeBtn').addEventListener('click', () => {
+    const order = ['system', 'light', 'dark'];
+    applyTheme(order[(order.indexOf(state.theme) + 1) % order.length]);
   });
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "stock-lens",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "选股有据：自然语言选股与证据解释工作台",
@@ -13,6 +13,7 @@
     "test": "node --test tests/*.test.mjs",
     "test:e2e": "node --test tests/browser.e2e.mjs",
     "probe:data": "node scripts/probe-data.mjs",
+    "setup:fuyao": "node scripts/setup-fuyao.mjs",
     "check:design": "node scripts/check-design.mjs"
   },
   "devDependencies": {

@@ -8,6 +8,8 @@ LLM_API_KEY=
 IFIND_API_KEY=
 IFIND_CONFIG_PATH=
 FUYAO_API_KEY=
+# Optional explicit local private JSON configuration; do not use local paths in production.
+FUYAO_CONFIG_PATH=
 PUBLIC_DATA_ENABLED=false
 APP_ORIGIN=
 # Production with model/data credentials requires an access password of 16+ characters.

@@ -100,6 +100,20 @@ test('非法JSON与大请求有界处理', async t => {
   assert.equal((await fetch(base + '/api/screen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{' })).status, 400);
   assert.equal((await fetch(base + '/api/interpret', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'a'.repeat(40_000) }) })).status, 413);
 });
+test('自动来源合并重复加载并保持快照ID与原始取数时点', async t => {
+  let calls = 0;
+  const { request } = await runApp(t, { snapshotLoader: async mode => {
+    calls++;
+    await new Promise(resolve => setTimeout(resolve, 10));
+    return { ...await loadSnapshot('demo'), mode };
+  } });
+  const [a,b] = await Promise.all([request('/api/snapshot', { mode: 'auto' }), request('/api/snapshot', { mode: 'auto' })]);
+  assert.equal(a.status, 200); assert.equal(b.status, 200); assert.equal(calls, 1);
+  assert.equal(a.body.id, b.body.id); assert.equal(a.body.fetchedAt, b.body.fetchedAt);
+  const c = await request('/api/snapshot', { mode: 'auto' });
+  assert.equal(c.body.cached, true); assert.equal(c.body.id, a.body.id); assert.equal(calls, 1);
+});
+
 test('速率上限保护模型与数据服务', async t => {
   const { request } = await runApp(t, { rateLimit: 1 });
   assert.equal((await request('/api/interpret', { text: '市盈率小于20' })).status, 200);

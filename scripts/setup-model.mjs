@@ -34,7 +34,18 @@ export async function validateDeepSeekKey(key, { fetchImpl = fetch } = {}) {
   return { LLM_API_KEY: cleaned, LLM_MODEL: selected, LLM_BASE_URL: 'https://api.deepseek.com' };
 }
 
-export function createSetupServer({ configPath = LOCAL_MODEL_PATH, validate = validateDeepSeekKey } = {}) {
+export function createSetupServer({
+  configPath = LOCAL_MODEL_PATH,
+  validate = validateDeepSeekKey,
+  pagePath = PAGE,
+  scriptPath = SCRIPT,
+  inspectConfig = file => {
+    const config = withLocalModelConfig({}, file);
+    return { configured: Boolean(config.LLM_API_KEY), model: config.LLM_MODEL || null };
+  },
+  provider = 'DeepSeek',
+  successMessage = '密钥验证并保存成功。回到产品刷新页面后即可使用大模型解析。',
+} = {}) {
   const csrf = randomBytes(32).toString('hex');
   let busy = false;
   const attempts = [];
@@ -53,15 +64,15 @@ export function createSetupServer({ configPath = LOCAL_MODEL_PATH, validate = va
       if (req.socket.remoteAddress !== '127.0.0.1' || req.headers.host !== new URL(origin).host || req.headers['sec-fetch-site'] === 'cross-site') throw fail(403, '配置入口只接受本机页面发起的请求。');
       const url = new URL(req.url, origin);
       if (req.method === 'GET' && url.pathname === '/') {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(await readFile(PAGE));
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(await readFile(pagePath));
       }
       if (req.method === 'GET' && ['/setup.js', '/tokens.css'].includes(url.pathname)) {
         res.writeHead(200, { 'Content-Type': url.pathname.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8' });
-        return res.end(await readFile(url.pathname.endsWith('.js') ? SCRIPT : TOKENS));
+        return res.end(await readFile(url.pathname.endsWith('.js') ? scriptPath : TOKENS));
       }
       if (req.method === 'GET' && url.pathname === '/status') {
-        const configured = withLocalModelConfig({}, configPath);
-        return json(200, { configured: Boolean(configured.LLM_API_KEY), csrf, model: configured.LLM_MODEL || null });
+        const configured = await inspectConfig(configPath);
+        return json(200, { configured: configured.configured === true, csrf, model: configured.model || null });
       }
       if (req.method !== 'POST' || url.pathname !== '/configure') throw fail(404, '配置入口不存在。');
       if (req.headers.origin !== origin || !eq(req.headers['x-setup-csrf'], csrf)) throw fail(403, '配置请求已失效，请刷新本机页面后重试。');
@@ -73,12 +84,15 @@ export function createSetupServer({ configPath = LOCAL_MODEL_PATH, validate = va
       let body = '';
       for await (const chunk of req) { body += chunk; if (Buffer.byteLength(body) > 2048) throw fail(413, '配置内容过长。'); }
       let parsed;
-      try { parsed = JSON.parse(body); } catch { throw fail(400, '配置内容无法读取。'); }
+      try {
+        parsed = JSON.parse(body);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('object required');
+      } catch { throw fail(400, '配置内容无法读取。'); }
       body = '';
       busy = true;
       try {
-        const configured = withLocalModelConfig({}, configPath);
-        if (configured.LLM_API_KEY && parsed.replace !== true) throw fail(409, '已有本机配置，请确认替换后再保存。');
+        const configured = await inspectConfig(configPath);
+        if (configured.configured && parsed.replace !== true) throw fail(409, '已有本机配置，请确认替换后再保存。');
         const config = await validate(parsed.key);
         parsed.key = '';
         await mkdir(path.dirname(configPath), { recursive: true, mode: 0o700 });
@@ -89,8 +103,8 @@ export function createSetupServer({ configPath = LOCAL_MODEL_PATH, validate = va
           await rename(tmp, configPath);
           await chmod(configPath, 0o600);
         } finally { await unlink(tmp).catch(() => {}); }
-        console.log('MODEL_SETUP_SAVED: provider=DeepSeek credential_redacted=true');
-        return json(200, { ok: true, message: '密钥验证并保存成功。回到产品刷新页面后即可使用大模型解析。', model: config.LLM_MODEL });
+        console.log(`PROVIDER_SETUP_SAVED: provider=${provider} credential_redacted=true`);
+        return json(200, { ok: true, message: successMessage });
       } finally { busy = false; }
     } catch (error) {
       if (!res.headersSent) json(error.safe ? error.status : 500, { error: error.safe ? error.message : '配置保存失败，未输出密钥，请联系开发者检查本机文件权限。' });

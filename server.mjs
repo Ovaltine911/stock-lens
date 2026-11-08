@@ -11,6 +11,7 @@ import { interpretIntent, modelCapabilities } from './lib/llm.mjs';
 import { withLocalModelConfig } from './lib/local-config.mjs';
 import { ifindCapabilities } from './lib/ifind.mjs';
 import { protectReview } from './lib/review-access.mjs';
+import { createSnapshotCache } from './lib/snapshot-cache.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const STATIC_ROOT = path.join(ROOT, 'public');
@@ -84,6 +85,7 @@ export function createApp({ env = process.env, snapshotLoader = loadSnapshot, in
   const runtimeEnv = () => localModelConfig ? withLocalModelConfig(env) : env;
   const snapshots = new Map();
   const requests = new Map();
+  const autoSnapshotCache = createSnapshotCache({ load: async mode => ({ ...await snapshotLoader(mode, { env }), id: randomUUID() }), now, ttlMs: 15 * 60_000 });
   let modelInFlight = 0;
   let dataInFlight = 0;
   const cleanup = () => {
@@ -99,8 +101,8 @@ export function createApp({ env = process.env, snapshotLoader = loadSnapshot, in
       if (!protectReview(req, res, runtimeEnv(), route)) return;
       if (route.startsWith('/api/')) {
         cleanup();
-        if (req.method === 'GET' && route === '/api/health') return json(res, 200, { ok: true, model: modelCapabilities(runtimeEnv()), data: { ...dataCapabilities(env), ...ifindCapabilities(env) }, version: '0.1.0' });
-        if (req.method === 'GET' && route === '/api/catalog') return json(res, 200, { metrics: METRICS, universe: UNIVERSE });
+        if (req.method === 'GET' && route === '/api/health') return json(res, 200, { ok: true, model: modelCapabilities(runtimeEnv()), data: { ...dataCapabilities(env), ...ifindCapabilities(env), autoAvailable: Boolean(env.FUYAO_API_KEY || env.FUYAO_CONFIG_PATH || ifindCapabilities(env).ifindConfigured) }, version: '0.2.0' });
+        if (req.method === 'GET' && route === '/api/catalog') return json(res, 200, { metrics: METRICS, universe: UNIVERSE, defaultMode: 'auto', snapshotTtlMinutes: 15 });
         if (req.method !== 'POST') throw apiError(405, 'METHOD', '不支持此请求方式。');
         if (!['/api/interpret', '/api/snapshot', '/api/screen'].includes(route)) throw apiError(404, 'NOT_FOUND', '请求的功能不存在。');
         checkOrigin(req, env);
@@ -123,15 +125,16 @@ export function createApp({ env = process.env, snapshotLoader = loadSnapshot, in
           } finally { modelInFlight--; }
         }
         if (route === '/api/snapshot') {
-          if (!['demo', 'public', 'fuyao', 'ifind'].includes(body.mode)) throw apiError(400, 'INVALID_MODE', '请选择明确的数据来源。');
+          if (!['auto', 'demo', 'public', 'fuyao', 'ifind'].includes(body.mode)) throw apiError(400, 'INVALID_MODE', '请选择明确的数据来源。');
           if (dataInFlight >= 2) throw apiError(429, 'BUSY', '数据服务正忙，请稍后再试。');
           dataInFlight++;
           try {
-            const snapshot = await snapshotLoader(body.mode, { env });
+            const snapshot = body.mode === 'auto' ? await autoSnapshotCache.get('auto') : await snapshotLoader(body.mode, { env });
             if (!snapshot || !Array.isArray(snapshot.stocks) || !snapshot.stocks.length || snapshot.stocks.length > 100 || snapshot.mode !== body.mode) throw apiError(502, 'DATA_SCHEMA', '数据源返回内容异常，未生成正常筛选结果。');
             // Opaque random IDs avoid collisions and prevent request-time mutations.
-            snapshot.id = randomUUID();
-            snapshots.set(snapshot.id, { snapshot: structuredClone(snapshot), createdAt: now() });
+            // Reuse a still-live cached snapshot ID; each new load gets an opaque ID.
+            if (body.mode !== 'auto') snapshot.id = randomUUID();
+            if (!snapshots.has(snapshot.id)) snapshots.set(snapshot.id, { snapshot: structuredClone(snapshot), createdAt: now() });
             while (snapshots.size > 100) snapshots.delete(snapshots.keys().next().value);
             return json(res, 200, snapshot);
           } finally { dataInFlight--; }

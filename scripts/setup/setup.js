@@ -5,6 +5,8 @@ scheme.addEventListener('change', theme);
 const button = document.querySelector('#saveBtn');
 const status = document.querySelector('#status');
 let csrf = '';
+const provider = document.body.dataset.provider || 'DeepSeek';
+const verificationNote = document.body.dataset.verificationNote || '验证期间不进行股票查询或模型推理。';
 async function init() {
   try {
     const response = await fetch('/status', { cache: 'no-store' });
@@ -24,9 +26,9 @@ async function init() {
 document.querySelector('#setupForm').addEventListener('submit', async event => {
   event.preventDefault();
   button.disabled = true;
-  button.textContent = '正在向 DeepSeek 验证';
+  button.textContent = `正在向${provider}验证`;
   status.className = '';
-  status.textContent = '验证期间不进行股票查询或模型推理。';
+  status.textContent = verificationNote;
   try {
     const response = await fetch('/configure', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Setup-CSRF': csrf },

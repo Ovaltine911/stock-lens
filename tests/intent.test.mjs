@@ -26,11 +26,17 @@ test('fuzzy suggestions create editable draft conditions requiring confirmation'
   assert.equal(result.clarifications.length, 3);
   assert.ok(result.conditions.every((item) => item.draft && item.requiresConfirmation));
   assert.deepEqual(result.conditions.map(({ metric, op, value }) => ({ metric, op, value })), [
-    { metric: 'revenue_yoy', op: 'gt', value: 0 }, { metric: 'profit_yoy', op: 'gt', value: 0 },
+    { metric: 'revenue_yoy_annual', op: 'gt', value: 0 }, { metric: 'profit_yoy_annual', op: 'gt', value: 0 },
     { metric: 'pe_ttm', op: 'gt', value: 0 }, { metric: 'pe_ttm', op: 'lte', value: 25 },
     { metric: 'volatility_20d', op: 'lte', value: 30 },
   ]);
   assert.match(result.warnings.join(' '), /可编辑草稿/);
+});
+
+test('明确年度增长不被嵌套解析成季度同比', () => {
+  const r = interpretRules('年度营收同比大于0且年度归母净利润同比大于10%');
+  assert.equal(r.needsConfirmation, false);
+  assert.deepEqual(r.conditions.map(c => c.metric), ['revenue_yoy_annual', 'profit_yoy_annual']);
 });
 
 test('relative stability wording creates annualized volatility draft', () => {

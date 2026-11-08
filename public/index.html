@@ -4,112 +4,189 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>选股有据 · 可解释选股工作台</title>
+  <title>选股有据 · 一句话选股</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar" aria-label="工作台导航">
-      <a class="brand" href="#top" aria-label="选股有据首页">
-        <span class="brand-mark" aria-hidden="true">据</span>
-        <span><strong>选股有据</strong><small>研究工作台</small></span>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top" aria-label="选股有据">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">选股有据</span>
+        <span class="brand-sub">一句话选股</span>
       </a>
-      <nav class="nav-list">
-        <a class="nav-item active" href="#workbench"><span class="nav-icon">◈</span>条件工作台</a>
-        <a class="nav-item" href="#results"><span class="nav-icon">▤</span>筛选结果</a>
-        <a class="nav-item" href="#saved"><span class="nav-icon">▱</span>本地记录</a>
-      </nav>
-      <div class="sidebar-foot">
-        <div class="api-state"><span class="status-dot" id="healthDot"></span><span id="healthText">正在检查连接</span></div>
-        <p class="sidebar-note">研究辅助工具，不构成投资建议</p>
-      </div>
-    </aside>
-
-    <main class="main" id="top">
-      <header class="topbar">
-        <div class="crumb"><span>研究空间</span><span class="crumb-sep">/</span><strong>条件工作台</strong></div>
+      <span class="proto-tag">笔试原型 · 非同花顺官方产品</span>
+      <div class="top-right">
+        <span class="health" title="服务状态"><span class="status-dot" id="healthDot"></span><span id="healthText">正在检查服务</span></span>
         <div class="top-actions">
-          <button class="icon-btn" id="themeBtn" type="button" aria-label="切换浅深色">◐</button>
-          <button class="button button-secondary" id="restoreBtn" type="button">恢复记录</button>
-          <button class="button button-secondary" id="saveBtn" type="button">保存当前</button>
-          <button class="button button-primary" id="exportBtn" type="button">导出 JSON</button>
+          <button class="btn btn-ghost btn-sm" id="dataInfoBtn" type="button">数据与口径</button>
+          <button class="btn btn-ghost btn-sm" id="restoreBtn" type="button">历史记录</button>
+          <button class="btn btn-ghost btn-sm" id="themeBtn" type="button" aria-label="切换浅深色">跟随系统</button>
         </div>
-      </header>
-
-      <div class="content" id="workbench">
-        <section class="intro" aria-labelledby="pageTitle">
-          <div>
-            <p class="eyebrow">证据优先的研究工作台</p>
-            <h1 id="pageTitle">把想法，变成有据可查的条件。</h1>
-            <p class="intro-copy">先描述研究意图，再确认明确条件。每个结论都保留来源、日期和口径。</p>
-          </div>
-          <div class="mode-card" id="modeCard">
-            <span class="status-dot" id="modeDot"></span>
-            <div><strong id="modeTitle">尚未加载数据</strong><small id="modeDescription">请选择数据模式并加载，结果不会预先生成</small></div>
-          </div>
-        </section>
-
-        <div class="notice notice-info" id="disclosure">
-          <span class="notice-icon">i</span>
-          <div><strong id="disclosureTitle">当前选择演示数据</strong><p id="disclosureCopy">样本名称和代码均为虚构，仅用于体验流程。真实数据请显式切换来源。</p></div>
-          <button class="text-button" id="dismissDisclosure" type="button">知道了</button>
-        </div>
-
-        <div class="workspace-grid">
-          <section class="panel condition-panel" aria-labelledby="conditionTitle">
-            <div class="panel-heading">
-              <div><p class="section-kicker">01 · 定义条件</p><h2 id="conditionTitle">描述你的选股想法</h2></div>
-              <span class="step-badge">先解析，再确认</span>
-            </div>
-            <label class="field-label" for="intentInput">自然语言样例</label>
-            <div class="input-wrap"><textarea id="intentInput" rows="3" placeholder="例如：筛选市盈率低于 20 倍且净资产收益率高于 10% 的公司"></textarea><span class="char-count" id="charCount">0 / 200</span></div>
-            <div class="sample-row"><button class="sample-chip" type="button" data-sample="筛选市盈率低于 20 倍且净资产收益率高于 10% 的公司">低估值 + 盈利能力</button><button class="sample-chip" type="button" data-sample="找出近20日涨幅超过5%，且20日年化波动率不高于30%的公司">动量 + 稳定性</button></div>
-            <div class="action-row"><button class="button button-primary" id="interpretBtn" type="button">解析研究意图</button><span class="parser-note" id="parserNote">解析前不会调用模型</span></div>
-
-            <div class="parse-result" id="parseResult" hidden>
-              <div class="result-heading"><div><span class="section-kicker">解析结果</span><h3 id="parseSummary">等待解析</h3></div><span class="mode-tag" id="parserMode">规则解析模式</span></div>
-              <div class="message-list" id="messageList"></div>
-              <div class="conditions-head"><h3>待确认条件</h3><button class="text-button" id="addConditionBtn" type="button">＋ 添加条件</button></div>
-              <div id="conditionsList" class="conditions-list"></div>
-              <div class="confirm-row"><span class="confirm-hint" id="confirmHint">请确认条件后再筛选</span><button class="button button-primary" id="confirmBtn" type="button" disabled>确认并筛选</button></div>
-            </div>
-          </section>
-
-          <section class="panel data-panel" aria-labelledby="dataTitle">
-            <div class="panel-heading"><div><p class="section-kicker">数据来源</p><h2 id="dataTitle">数据与口径</h2></div><span class="freshness" id="dataStatus">尚未加载</span></div>
-            <label class="field-label" for="dataMode">数据模式</label>
-            <select id="dataMode" class="select-control"><option value="demo">演示数据 · 合成样本</option><option value="ifind">iFinD · 授权固定日期快照</option><option value="fuyao">扶摇数据 · 需服务配置</option><option value="public">公开来源 · 需验证可用</option></select>
-            <div class="source-summary" id="sourceSummary"><div class="source-icon">◌</div><div><strong>选择数据模式并加载</strong><p>不会在未选择数据和筛选前展示结果。</p></div></div>
-            <button class="button button-secondary full-button" id="loadDataBtn" type="button">加载此数据源</button>
-            <div class="source-meta" id="sourceMeta"><span>来源：未加载</span><span>截至：未知</span></div>
-            <div class="safe-note"><span>✓</span>数据源切换或编辑条件后，旧结果会标记为过期</div>
-          </section>
-        </div>
-
-        <section class="panel results-panel" id="results" aria-labelledby="resultsTitle">
-          <div class="results-heading">
-            <div><p class="section-kicker">02 · 查看结果</p><h2 id="resultsTitle">筛选结果</h2><p class="results-sub" id="resultsSub">确认条件并完成筛选后，结果会显示在这里。</p></div>
-            <div class="result-tools"><span class="snapshot-tag" id="snapshotTag">未生成快照</span><button class="button button-secondary" id="retryBtn" type="button" hidden>重试</button></div>
-          </div>
-          <div id="errorBox" class="notice notice-error" hidden><span class="notice-icon">!</span><div><strong id="errorTitle">暂时无法完成</strong><p id="errorMessage">请检查连接后重试。</p></div><button class="text-button" id="errorRetryBtn" type="button">重试</button></div>
-          <div class="empty-results" id="emptyResults"><div class="empty-mark">⌁</div><h3>还没有筛选结果</h3><p>先加载数据源，再解析并确认至少一条条件。</p><span class="empty-detail">结果不会预先生成，避免把旧数据误认为当前条件的结论。</span></div>
-          <div id="resultsContent" hidden>
-            <div class="stats-row" id="statsRow"></div>
-            <div class="tabs" role="tablist" aria-label="结果视图"><button class="tab active" role="tab" aria-selected="true" data-tab="overview">概览</button><button class="tab" role="tab" aria-selected="false" data-tab="evidence">证据详情</button><button class="tab" role="tab" aria-selected="false" data-tab="compare">前后对比</button></div>
-            <div class="tab-content" id="overviewTab"></div><div class="tab-content" id="evidenceTab" hidden></div><div class="tab-content" id="compareTab" hidden></div>
-          </div>
-        </section>
-
-        <section class="panel saved-panel" id="saved" aria-labelledby="savedTitle">
-          <div class="saved-head"><div><p class="section-kicker">03 · 保存记录</p><h2 id="savedTitle">本地记录</h2><p>仅保存在当前浏览器。恢复内容会标注为历史记录，不代表实时行情。</p></div><span class="local-badge" id="storageStatus">本地存储待使用</span></div>
-          <div id="savedContent" class="saved-content"><div class="saved-empty">暂无保存记录。完成一次筛选后，可保存条件、快照与结果。</div></div>
-        </section>
-        <footer class="footer"><span>选股有据 v0.1 · 研究辅助，不构成投资建议</span><span>所有日期均显示数据源原始口径</span></footer>
       </div>
-    </main>
+    </div>
+  </header>
+
+  <section class="universe" id="universeStrip" aria-label="观察范围">
+    <div class="universe-inner">
+      <div class="uni-scope">
+        <span class="uni-flag">观察范围</span>
+        <strong id="universeLabel">12 家 A 股观察样本</strong>
+        <span class="uni-note">非全市场</span>
+      </div>
+      <dl class="uni-meta">
+        <div><dt>数据日期</dt><dd id="dataDate">尚未取数</dd></div>
+        <div><dt>来源</dt><dd id="dataSource">首次筛选时自动获取</dd></div>
+        <div id="cacheInfoWrap" hidden><dt>获取于</dt><dd id="cacheInfo"></dd></div>
+      </dl>
+      <ol class="sample-list" id="sampleList" aria-label="样本名单"></ol>
+    </div>
+  </section>
+
+  <div class="demo-banner" id="demoBanner" hidden>
+    <div class="demo-inner">
+      <span class="demo-flag">演示</span>
+      <span>当前为合成演示数据：公司名称、代码和数值均为虚构，不是真实行情，不能用于研究真实股票。</span>
+      <button class="btn btn-ghost btn-sm" id="exitDemoBtn" type="button">切回真实数据</button>
+    </div>
   </div>
-  <dialog id="evidenceDialog" class="evidence-dialog"><div class="dialog-head"><div><p class="section-kicker">证据详情</p><h2 id="dialogTitle">证据详情</h2></div><button class="icon-btn" id="closeDialog" type="button" aria-label="关闭">×</button></div><div id="dialogBody"></div></dialog>
+
+  <main class="page" id="top">
+    <section class="query" aria-labelledby="queryTitle">
+      <h1 class="sr-only" id="queryTitle">一句话选股</h1>
+      <div class="query-box">
+        <label class="sr-only" for="intentInput">用一句话描述选股条件</label>
+        <textarea id="intentInput" rows="2" maxlength="200" placeholder="用一句话描述你想找的股票，例如：市盈率低于 20 倍且 ROE 高于 10%"></textarea>
+        <div class="query-side">
+          <span class="char-count" id="charCount">0/200</span>
+          <button class="btn btn-primary btn-lg" id="interpretBtn" type="button">开始筛选</button>
+        </div>
+      </div>
+      <div class="query-foot">
+        <span class="foot-label">试试</span>
+        <button class="sample-chip" type="button" data-sample="市盈率低于 20 倍且 ROE 高于 10%">低估值高盈利</button>
+        <button class="sample-chip" type="button" data-sample="经营改善、估值合理、走势相对稳定">经营改善且走势稳</button>
+        <button class="sample-chip" type="button" data-sample="20日波动率不高于 30% 且总市值大于 1000 亿元">大市值低波动</button>
+        <span class="query-hint" id="queryHint" aria-live="polite"></span>
+        <button class="link-btn" id="manualEntryBtn" type="button">手动设置条件</button>
+      </div>
+      <ol class="stages" id="stageBar" aria-label="处理进度" aria-live="polite">
+        <li class="stage" id="stage-understand" data-state="idle"><span class="stage-idx" aria-hidden="true">1</span><div class="stage-copy"><strong>理解需求</strong><small id="stageUnderstandText">等待输入</small></div><span class="stage-bar" aria-hidden="true"></span></li>
+        <li class="stage" id="stage-data" data-state="idle"><span class="stage-idx" aria-hidden="true">2</span><div class="stage-copy"><strong>获取数据</strong><small id="stageDataText">自动获取，无需选择来源</small></div><span class="stage-bar" aria-hidden="true"></span></li>
+        <li class="stage" id="stage-verify" data-state="idle"><span class="stage-idx" aria-hidden="true">3</span><div class="stage-copy"><strong>逐项核验</strong><small id="stageVerifyText">每个条件都给出数值与来源</small></div><span class="stage-bar" aria-hidden="true"></span></li>
+      </ol>
+    </section>
+
+    <div class="notice notice-error" id="errorBox" role="alert" hidden>
+      <span class="notice-mark" aria-hidden="true"></span>
+      <div class="notice-body"><strong id="errorTitle">暂时无法完成</strong><p id="errorMessage"></p></div>
+      <div class="notice-actions">
+        <button class="btn btn-ghost btn-sm" id="errorDemoBtn" type="button" hidden>改用演示数据体验</button>
+        <button class="btn btn-ghost btn-sm" id="retryBtn" type="button" hidden>重试</button>
+      </div>
+    </div>
+
+    <div class="workspace">
+      <section class="panel cond-panel" id="workbench" aria-labelledby="conditionTitle">
+        <header class="panel-head">
+          <h2 class="sec-title" id="conditionTitle">筛选条件</h2>
+          <span class="tag" id="parserMode">未开始</span>
+        </header>
+        <p class="intent-summary" id="parseSummary">提交一句话后，条件在这里展开，阈值可直接修改。</p>
+        <div class="message-list" id="messageList"></div>
+        <div class="conditions" id="conditionsList"></div>
+        <div class="manual-confirm" id="manualConfirm" hidden>
+          <p id="manualConfirmText">改为手动后，当前条件会清空。</p>
+          <div class="manual-actions">
+            <button class="btn btn-ghost btn-sm" id="manualCancelBtn" type="button">取消</button>
+            <button class="btn btn-danger-soft btn-sm" id="manualConfirmBtn" type="button">放弃并改为手动</button>
+          </div>
+        </div>
+        <div class="cond-tools">
+          <button class="link-btn" id="addConditionBtn" type="button">添加条件</button>
+          <button class="link-btn" id="manualBtn" type="button" hidden>改为手动条件</button>
+        </div>
+        <footer class="cond-foot">
+          <span class="hint" id="confirmHint">等待输入</span>
+          <button class="btn btn-primary" id="confirmBtn" type="button" disabled>按这些条件筛选</button>
+        </footer>
+      </section>
+
+      <section class="panel results-panel" id="results" aria-labelledby="resultsTitle">
+        <header class="panel-head">
+          <h2 class="sec-title" id="resultsTitle">筛选结果</h2>
+          <span class="tag" id="snapshotTag">未筛选</span>
+          <div class="result-actions">
+            <button class="btn btn-ghost btn-sm" id="saveBtn" type="button" disabled>保存到本浏览器</button>
+            <button class="btn btn-ghost btn-sm" id="exportBtn" type="button" disabled>导出 JSON</button>
+          </div>
+        </header>
+        <p class="results-sub" id="resultsSub">结果会按通过、未通过、数据不足分组，每个数值都能查看来源。</p>
+        <div class="inline-notice" id="staleBanner" hidden>
+          <span class="inline-mark" aria-hidden="true"></span>
+          <span id="staleText"></span>
+          <button class="btn btn-ghost btn-sm" id="refetchBtn" type="button" hidden>重新获取数据</button>
+        </div>
+        <div class="empty" id="emptyResults">
+          <strong>还没有结果</strong>
+          <span>在上方输入一句话并点开始筛选。明确的条件会自动取数核验，含糊的说法会先请你确认。</span>
+        </div>
+        <div class="skeleton" id="resultsSkeleton" hidden aria-hidden="true">
+          <span class="sk-line sk-hero"></span>
+          <span class="sk-line"></span><span class="sk-line"></span><span class="sk-line"></span><span class="sk-line"></span><span class="sk-line"></span>
+        </div>
+        <div id="resultsContent" hidden>
+          <div class="result-hero">
+            <div class="hero-main"><strong id="heroCount">0</strong><span id="heroText"></span></div>
+            <ol class="funnel" id="funnel" aria-label="各条件满足家数"></ol>
+          </div>
+          <div class="diff-box" id="diffBox" hidden></div>
+          <div class="tabs" role="tablist" aria-label="结果分组" id="resultTabs">
+            <button class="tab" role="tab" id="tabPass" data-filter="pass" aria-selected="true" type="button">通过 <b>0</b></button>
+            <button class="tab" role="tab" id="tabFail" data-filter="fail" aria-selected="false" type="button">未通过 <b>0</b></button>
+            <button class="tab" role="tab" id="tabUnknown" data-filter="unknown" aria-selected="false" type="button">数据不足 <b>0</b></button>
+            <span class="tab-note" id="tabNote"></span>
+          </div>
+          <div id="overviewTab" role="tabpanel" aria-labelledby="tabPass"></div>
+          <div class="compare-tray" id="compareTray" hidden>
+            <span>已选 <b id="compareCount">0</b>/3 只候选</span>
+            <span class="tray-names" id="compareNames"></span>
+            <button class="link-btn" id="compareClearBtn" type="button">清空</button>
+            <button class="btn btn-ghost btn-sm" id="compareBtn" type="button">横向对比</button>
+          </div>
+          <div class="compare-view" id="compareTab" hidden></div>
+          <p class="result-foot" id="resultFoot"></p>
+        </div>
+      </section>
+    </div>
+
+    <footer class="footer">
+      <span>选股有据 · 笔试原型 · 非同花顺官方产品</span>
+      <span>研究辅助，不构成投资建议；数据日期与口径以逐项证据为准</span>
+    </footer>
+  </main>
+
+  <dialog class="sheet" id="evidenceDialog" aria-labelledby="dialogTitle">
+    <header class="sheet-head"><div><span class="sheet-kicker" id="dialogKicker">逐项证据</span><h2 id="dialogTitle">证据详情</h2></div><button class="btn btn-ghost btn-sm" id="closeDialog" type="button" aria-label="关闭">关闭</button></header>
+    <div class="sheet-body" id="dialogBody"></div>
+  </dialog>
+
+  <dialog class="sheet" id="dataDialog" aria-labelledby="dataDialogTitle">
+    <header class="sheet-head"><div><span class="sheet-kicker">说明</span><h2 id="dataDialogTitle">数据与口径</h2></div><button class="btn btn-ghost btn-sm" id="closeDataDialog" type="button" aria-label="关闭">关闭</button></header>
+    <div class="sheet-body" id="dataBody"></div>
+    <footer class="sheet-foot">
+      <span class="hint" id="demoHint">演示数据为合成样本，仅用于体验流程。</span>
+      <button class="btn btn-ghost btn-sm" id="demoBtn" type="button">使用合成演示数据</button>
+    </footer>
+  </dialog>
+
+  <dialog class="sheet" id="historyDialog" aria-labelledby="historyTitle">
+    <header class="sheet-head"><div><span class="sheet-kicker">仅保存在本浏览器</span><h2 id="historyTitle">历史记录</h2></div><button class="btn btn-ghost btn-sm" id="closeHistoryDialog" type="button" aria-label="关闭">关闭</button></header>
+    <div class="sheet-body" id="savedList"></div>
+  </dialog>
+
   <script type="module" src="app.js"></script>
 </body>
 </html>

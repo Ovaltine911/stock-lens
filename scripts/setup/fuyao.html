@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>配置 扶摇 · 选股有据</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:var(--font-sans);color:var(--foreground);background:var(--sidebar);font-size:14px;line-height:20px}
+main{max-width:600px;margin:0 auto;padding:64px 24px}.badge{display:inline-flex;padding:4px 8px;border-radius:6px;background:var(--brand-tint);color:var(--brand);font-size:12px;line-height:16px}
+h1{font-size:28px;line-height:40px;margin:16px 0 8px}p{margin:0 0 16px}.muted{color:var(--muted-foreground)}
+.card{margin-top:24px;padding:24px;background:var(--card);border-radius:14px;box-shadow:0 0 0 1px var(--border)}
+label{display:block;font-weight:500;margin-bottom:8px}input[type=password]{width:100%;height:40px;border:0;background:var(--muted);color:var(--foreground);padding:0 12px;border-radius:10px;font:inherit}
+button{height:40px;border:0;border-radius:10px;padding:0 16px;background:var(--primary);color:var(--primary-foreground);font:inherit;cursor:pointer;width:100%;margin-top:20px}
+button:disabled{opacity:.5;cursor:wait}input:focus-visible,button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.meta{font-size:12px;line-height:16px}.help{margin-top:8px}a{color:var(--brand)}.confirm{display:flex;gap:8px;align-items:flex-start;margin-top:16px;font-weight:400;font-size:13px;line-height:18px}.confirm input{margin:2px 0 0}
+#status{margin-top:16px;margin-bottom:0;overflow-wrap:anywhere}.success{color:var(--success)}.error{color:var(--destructive)}
+ul{padding-left:20px;margin:12px 0 0}li{margin-bottom:8px}footer{margin-top:24px}
+[hidden]{display:none!important}@media(prefers-reduced-motion:reduce){*{animation: none !important; transition: none !important}}
+</style>
+<script src="setup.js" defer></script>
+</head>
+<body data-provider="扶摇" data-verification-note="正在请求扶摇官方单只股票估值接口。只验证权限，不生成投资结论。">
+<main>
+<span class="badge">仅本机可访问</span>
+<h1>连接扶摇金融数据</h1>
+<p class="muted">连接真实金融数据。密钥只保存在本机私有配置，不发送到聊天，不影响已有模型配置。</p>
+<form class="card" id="setupForm">
+<label for="key">扶摇 API 密钥</label>
+<input type="password" id="key" name="key" autocomplete="off" spellcheck="false" required minlength="8" maxlength="1000" placeholder="粘贴扶摇后台创建的 API Key">
+<p class="meta muted help">在 <a href="https://fuyao.aicubes.cn/admin/" target="_blank" rel="noopener noreferrer">扶摇官方密钥页面</a> 创建并复制。</p>
+<label class="confirm" id="replaceRow" hidden><input type="checkbox" id="replace">已存在本机配置，我确认用新密钥替换。</label>
+<button type="submit" id="saveBtn" disabled>正在检查本机配置</button>
+<p id="status" role="status" aria-live="polite"></p>
+</form>
+<footer class="meta muted">
+<strong>这个页面会做什么</strong>
+<ul><li>密钥先发送给本机配置服务，再仅用于向扶摇官方验证单只股票估值接口权限，可能消耗一次调用额度。</li><li>验证成功后保存到本机私有配置文件，不写入浏览器存储、不回显密钥。</li><li>这次不会改变线上产品。验证成功后再检查财务、历史行情与交易日历等字段。</li></ul>
+<p><a href="http://127.0.0.1:4173" target="_blank" rel="noopener noreferrer">返回选股有据工作台</a></p>
+</footer>
+</main>
+</body>
+</html>

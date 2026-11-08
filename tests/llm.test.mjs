@@ -70,6 +70,12 @@ test('草稿摘要的条件数从结构计算，不信任模型口算', () => {
   assert.match(result.summary, /1 条/);
   assert.ok(!result.summary.includes('99'));
 });
+test('明确意图无需重复确认，模糊语义即使模型漏问也必须确认', () => {
+  assert.equal(validateModelIntent(draft(), '市盈率小于20').needsConfirmation, false);
+  const fuzzy = validateModelIntent(draft(), '估值合理');
+  assert.equal(fuzzy.needsConfirmation, true);
+  assert.ok(fuzzy.clarifications.length > 0);
+});
 test('空输入与超长输入被拒绝', async () => {
   for (const text of ['', ' '.repeat(3), null, 'a'.repeat(2001)]) await assert.rejects(() => interpretIntent(text, { env: {} }), e => e.code === 'INVALID_INPUT');
 });
