@@ -1,14 +1,14 @@
 # 部署与提交清单
 
-## 1. 当前状态：线上 V2，V3 待发布
+## 1. 当前状态：V3已上线
 
 | 项目 | 当前事实 | V3还需完成 |
 | --- | --- | --- |
-| 公网产品 | [选股有据](https://stock-lens-production-9620.up.railway.app)，运行V2提交 `a8462ee`；评审账号由私有附件提供 | 前端验收、冻结版本、重新部署与公网验证 |
-| 源码仓库 | [GitHub PUBLIC仓库](https://github.com/Ovaltine911/stock-lens) 已获授权并推送V2 | 审查V3差异、测试后提交推送，记录最终commit |
-| 模型 | V3本机真实分流HTTP200：明确3条件/2567ms，模糊5条件+3解释/8486ms | 公网V3真实分流验证；单次耗时不是P95 |
-| 自动数据 | 本机扶摇已安全保存；12股19请求、HTTP200、1570ms，一次缓存复用成功 | **云端尚未配置 `FUYAO_API_KEY`**，需平台Secret配置后重新验收 |
-| 自动化 | 最近 `npm test` 121通过，包含25项auto-data | 冻结后全量复跑；新版8条浏览器用例已写但尚未验收，设计检查待补 |
+| 公网产品 | [选股有据](https://stock-lens-production-9620.up.railway.app)，运行V3提交 `77ca4f3`；评审账号由私有附件提供 | 已通过公网明确单提交、模糊单确认与真实数据筛选 |
+| 源码仓库 | [GitHub PUBLIC仓库](https://github.com/Ovaltine911/stock-lens) 已获授权并推送V3 | 代码提交已推送，后续文档提交不改变运行代码 |
+| 模型 | V3本机真实分流HTTP200：明确3条件/2567ms，模糊5条件+3解释/8486ms | 公网V3真实分流已通过，首次完整明确查询18741ms；不是P95 |
+| 自动数据 | 本机扶摇已安全保存；12股19请求、HTTP200、1570ms，一次缓存复用成功 | 云端扶摇已安全配置，真实自动取数已验收 |
+| 自动化 | 最近 `npm test` 121通过，包含25项auto-data | 冻结后121单元/接口、8浏览器与完整设计检查通过 |
 | 展示与提交包 | V2历史材料已有 | V3最终截图、脱敏包、校验与文档版本绑定 |
 
 当前本机证据见 [V3_VALIDATION.md](V3_VALIDATION.md)。[V2公网验证（历史）](PRODUCTION_VALIDATION.md) 和 [V2错误横幅修复（历史）](ERROR_BANNER_FIX.md) 不能作为V3上线证明。不要把已完成的GitHub公开、授权和V2部署重新写成未完成，也不要把本机V3成功写成已部署。
@@ -128,8 +128,8 @@ GitHub PUBLIC已获用户授权，V2已推送。V3继续遵循最小权限和逐
 
 | 项目 | 当前值 |
 | --- | --- |
-| 公网地址 | https://stock-lens-production-9620.up.railway.app （目前V2） |
-| 公开源码 | https://github.com/Ovaltine911/stock-lens （已推送V2） |
+| 公网地址 | https://stock-lens-production-9620.up.railway.app （V3） |
+| 公开源码 | https://github.com/Ovaltine911/stock-lens （已推送V3） |
 | V3提交 / 部署标识 | TODO：冻结与发布后填写 |
 | V3最终测试 / 视觉 / 浏览器 | TODO：121项为最近交接；新版8条E2E、视觉与最终回归待补 |
 | V3公网真实调用与覆盖 | TODO：云端扶摇配置后受控验证 |

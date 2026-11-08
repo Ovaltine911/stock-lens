@@ -57,4 +57,20 @@ V3_LIVE_BROWSER=PASS
 
 联调发现并处理：历史单条记录直接恢复与测试预期弹窗不一致，测试改为验证历史标识和重新查询按钮；冲突说明补充明确‘冲突’字样；手机不再隐藏数据与口径入口；年度年份提取只接受显式年份/日期字段，防止从时间戳误提年份；已确认的模糊解释折叠并清除待确认文案。
 
-部署和最终打包以随后记录为准。线上旧版在发布新版本前保持不变。
+## V3公网发布验收
+
+2026-11-08，运行代码提交`77ca4f3fc66152158f8c816b198ac4239a9a7d36`部署状态SUCCESS，版本0.2.0，自动取数能力为true；匿名页面401保护仍有效。地址保持 https://stock-lens-production-9620.up.railway.app ，评审凭证不变。
+
+```text
+EXPLICIT_ONE_SUBMIT=PASS
+EXPLICIT_TOTAL_MS=18741
+EXPLICIT_COUNTS={"pass":6,"fail":6,"unknown":0,"total":12}
+FUZZY_SINGLE_CONFIRM=PASS
+FUZZY_COUNTS={"pass":5,"fail":7,"unknown":0,"total":12}
+BROWSER_ERRORS=0
+V3_LIVE_BROWSER=PASS
+```
+
+公网首次完整明确请求约18.7秒，包括网络、模型和自动取数，不等于本机1.57秒的单独数据加载。含糊表达仍要一次语义确认，未把安全边界删除。数据接口、规则结果、错误隐私保护与旧版不同的交互需按本版材料演示。
+
+联调失败全部已处理：新历史记录单条直达与旧测试弹窗预期不一致，改为验证明确历史标识；冲突文案改为显式‘冲突’；手机数据入口恢复可用；本机预览进程退出导致ERR_CONNECTION_REFUSED，重启后通过，不属于公网故障。
