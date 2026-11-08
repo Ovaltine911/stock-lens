@@ -52,6 +52,31 @@ async function screen(page) {
   return body;
 }
 
+test('无错误时隐藏横幅和重试，真实错误出现后能显示并在恢复后清除', async t => {
+  const page = await pageFor(t);
+  for (const selector of ['#errorBox', '#retryBtn']) {
+    assert.equal(await page.locator(selector).evaluate(el => el.hidden), true);
+    assert.equal(await page.locator(selector).isVisible(), false, `${selector} 的 hidden 不能被布局样式覆盖`);
+    assert.equal(await page.locator(selector).evaluate(el => getComputedStyle(el).display), 'none');
+  }
+  await loadDemo(page);
+  await interpret(page, '市盈率小于20');
+  await screen(page);
+  assert.equal(await page.locator('#errorBox').isVisible(), false);
+  assert.equal(await page.locator('#retryBtn').isVisible(), false);
+  await interpret(page, '市盈率小于10且市盈率大于30');
+  const failed = page.waitForResponse(r => r.url().endsWith('/api/screen'));
+  await page.locator('#confirmBtn').click();
+  assert.equal((await failed).status(), 422);
+  await page.locator('#errorBox').waitFor({ state: 'visible' });
+  assert.match(await page.locator('#errorTitle').textContent(), /冲突/);
+  assert.equal(await page.locator('#retryBtn').isVisible(), true);
+  await interpret(page, '市盈率小于20');
+  await screen(page);
+  assert.equal(await page.locator('#errorBox').isVisible(), false);
+  assert.equal(await page.locator('#retryBtn').isVisible(), false);
+});
+
 test('桌面主流程、证据、条件编辑、同快照对比和当前导出', async t => {
   const page = await pageFor(t);
   assert.equal(await page.locator('#resultsContent').isVisible(), false);

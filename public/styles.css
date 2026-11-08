@@ -2,6 +2,11 @@
   box-sizing: border-box;
 }
 
+/* State visibility must take precedence over component flex/grid layouts. */
+[hidden] {
+  display: none !important;
+}
+
 html {
   scroll-behavior: smooth;
 }

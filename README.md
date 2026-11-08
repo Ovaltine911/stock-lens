@@ -2,7 +2,7 @@
 
 自然语言选股与策略解释工作台。同花顺 AI 产品经理笔试《自然语言智能选股与策略解释器》的可运行原型。
 
-> **状态说明：产品已部署，公网真实主链路验证通过。** [打开选股有据](https://stock-lens-production-9620.up.railway.app)，评审账号通过笔试私有附件提供。[源码仓库](https://github.com/Ovaltine911/stock-lens)。DeepSeek真实解析、iFinD12股真实快照、筛选/证据/保存恢复已在公网验证。79项单元/接口、5项本地浏览器测试和完整设计检查通过。见[公网验证记录](docs/PRODUCTION_VALIDATION.md)。新环境未配置凭证时明确使用合成演示与规则解析，不冒充真实行情或大模型。
+> **状态说明：产品已部署，公网真实主链路验证通过。** [打开选股有据](https://stock-lens-production-9620.up.railway.app)，评审账号通过笔试私有附件提供。[源码仓库](https://github.com/Ovaltine911/stock-lens)。DeepSeek真实解析、iFinD12股真实快照、筛选/证据/保存恢复已在公网验证。79项单元/接口、6项本地浏览器测试和完整设计检查通过。已修正用户反馈的错误横幅误显示，见[修复记录](docs/ERROR_BANNER_FIX.md)。见[公网验证记录](docs/PRODUCTION_VALIDATION.md)。新环境未配置凭证时明确使用合成演示与规则解析，不冒充真实行情或大模型。
 
 ## 目标用户与产品选择
 
