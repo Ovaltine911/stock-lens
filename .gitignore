@@ -1,0 +1,14 @@
+node_modules/
+.local/
+**/mcp_config.json
+.env
+.env.*
+# Public template is config.example; keep all .env variants private.
+coverage/
+artifacts/
+*.log
+.DS_Store
+.vercel/
+playwright-report/
+test-results/
+data/private/

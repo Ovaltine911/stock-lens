@@ -1,0 +1,404 @@
+/* 由 scripts/export-design-tokens.mjs 从 src/styles.css 导出,不要手改。
+   预览 HTML 引用:<link rel="stylesheet" href="tokens.css">,数值一律写 var(--*)。 */
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.21 0.006 285.885);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.967 0.001 286.375);
+  --accent-foreground: oklch(0.21 0.006 285.885);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.705 0.015 286.067);
+  --brand: oklch(0.55 0.16 255);
+  --brand-foreground: oklch(0.985 0 0);
+  --success: oklch(0.55 0.16 145);
+  --warning: oklch(0.75 0.16 85);
+  --info: oklch(0.55 0.18 250);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.141 0.005 285.823);
+  --sidebar-accent: oklch(0.95 0.002 286.375);
+  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-border: oklch(0.92 0.004 286.32);
+  --scrollbar-thumb: oklch(0 0 0 / 10%);
+  --scrollbar-thumb-hover: oklch(0 0 0 / 18%);
+  --hairline: oklch(0.141 0.005 285.823 / 0.10);
+  --exec-surface: color-mix(in oklab, #0d0d0d 8%, transparent);
+  --exec-border: color-mix(in oklab, #0d0d0d 15%, transparent);
+  --radius: 0.625rem;
+  --bg: var(--background);
+  --surface: var(--card);
+  --surface-2: var(--muted);
+  --text: var(--foreground);
+  --text-soft: oklch(0.45 0.013 286);
+  --text-faint: var(--muted-foreground);
+  --text-dim: var(--muted-foreground);
+  --glass-bg: oklch(1 0 0 / .72);
+  --brand-press: oklch(0.50 0.16 255);
+  --brand-tint: oklch(0.95 0.03 255);
+  --folder-200: color-mix(in oklab, var(--brand) 32%, white);
+  --folder-300: color-mix(in oklab, var(--brand) 52%, white);
+  --folder-400: color-mix(in oklab, var(--brand) 76%, white);
+  --folder-500: var(--brand);
+  --folder-600: color-mix(in oklab, var(--brand) 80%, black);
+  --wf: oklch(0.55 0.20 295);
+  --wf-soft: oklch(0.55 0.20 295 / 0.14);
+  --wf-tint: oklch(0.96 0.03 295);
+  --border-strong: oklch(0.87 0.005 286);
+  --danger: var(--destructive);
+  --tool-bg: var(--muted);
+  --tool-bd: var(--border);
+  --tool-tx: var(--muted-foreground);
+  --r-sm: calc(var(--radius) * 0.6);
+  --r-md: var(--radius);
+  --r-lg: calc(var(--radius) * 1.4);
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / .05);
+  --shadow: 0 1px 3px oklch(0 0 0 / .09), 0 1px 2px -1px oklch(0 0 0 / .06);
+  --elev-thumb: 0 0 0 1px oklch(0.141 0.005 285.823 / .06), 0 1px 2px oklch(0 0 0 / .08);
+  --elev-pop: 0 0 0 1px oklch(0.141 0.005 285.823 / .08), 0 2px 4px -1px oklch(0 0 0 / .06), 0 10px 24px -6px oklch(0 0 0 / .12);
+  --elev-dialog: 0 0 0 1px oklch(0.141 0.005 285.823 / .08), 0 4px 8px -2px oklch(0 0 0 / .06), 0 24px 48px -12px oklch(0 0 0 / .22);
+  --tracking-label: 0.04em;
+  --tracking-title: -0.01em;
+  --font-sans: "Inter Variable", "Inter", "PiCode CJK", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-body: var(--font-sans);
+  --font-display: var(--font-sans);
+  --font-mono: "SF Mono", "PiCode CJK", ui-monospace, "JetBrains Mono", "Cascadia Code", monospace;
+  --step--2: 11px;
+  --step--1: 13px;
+  --step-0: 15px;
+  --step-1: 20px;
+  --step-2: 28px;
+  --fs-tiny: 10px;
+  --lh-tiny: 14px;
+  --fs-meta: 11px;
+  --lh-meta: 16px;
+  --fs-ui: 13px;
+  --lh-ui: 18px;
+  --fs-prose-eval: 14px;
+  --lh-prose-eval: 22px;
+  --fs-md-code: 12px;
+  --lh-md-code: 20px;
+  --fs-md-code-eval: 12px;
+  --lh-md-code-eval: 20px;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --lh-xs: 16px;
+  --lh-sm: 20px;
+  --lh-base: 24px;
+  --lh-lg: 28px;
+  --lh-xl: 28px;
+  --lh-tiny-loose: 16px;
+  --lh-meta-loose: 18px;
+  --lh-xs-loose: 20px;
+  --lh-ui-loose: 22px;
+  --lh-sm-loose: 22px;
+  --lh-xs-code: 18px;
+  --lh-ui-code: 20px;
+  --lh-step--2: 18px;
+  --lh-step--1: 20px;
+  --lh-step-0: 24px;
+  --lh-step-1: 32px;
+  --lh-step-2: 44px;
+  --lh-step-0-tight: 21px;
+  --lh-step-1-tight: 28px;
+  --lh-eval-title: 25px;
+  --rail-cell: 30px;
+  --dur-instant: 100ms;
+  --dur-fast: 150ms;
+  --dur-base: 200ms;
+  --dur-slow: 300ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.8, 0, 0.4, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-draw: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-expo-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --feedback-shimmer-period: 2s;
+  --feedback-swap-enter: 200ms;
+  --feedback-swap-exit: 140ms;
+  --feedback-swap-width: 220ms;
+  --feedback-tool-spin: 900ms;
+  --feedback-tool-breathe: 1600ms;
+  --feedback-tool-ring: 240ms;
+  --feedback-tool-draw: 320ms;
+  --feedback-tool-delay: 90ms;
+  --feedback-thinking-grid: 260ms;
+  --message-actions-duration: 160ms;
+  --composer-icon-duration: 160ms;
+  --composer-background-duration: 200ms;
+  --message-user-enter-duration: 240ms;
+  --motion-popup-enter: 200ms;
+  --motion-popup-exit: 150ms;
+  --motion-sheet-enter: 220ms;
+  --motion-sheet-exit: 150ms;
+  --motion-tooltip-enter: 150ms;
+  --motion-tooltip-exit: 100ms;
+  --motion-backdrop-enter: 150ms;
+  --motion-backdrop-exit: 150ms;
+  --motion-control-ease: cubic-bezier(.22, 1, .36, 1);
+  --scroll-jump-opacity-duration: 180ms;
+  --sidebar-w: 248px;
+  --topbar-h: 56px;
+}
+
+@supports (transition-timing-function: linear(0,1)) {
+  :root {
+    --motion-control-ease: linear(0, .09495, .28803, .49207, .66683, .79949, .89144, .95009, .98428, 1.00198, 1.00946, 1.01119, 1.01009, 1.00794, 1.00568, 1.00375, 1.00229, 1.00127, 1.00063, 1.00026, 1.00006, .99998, .99996, .99998, 1);
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: oklch(0.18 0.005 285.823);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.21 0.006 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.92 0.004 286.32);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.552 0.016 285.938);
+  --brand: oklch(0.65 0.16 255);
+  --brand-foreground: oklch(0.985 0 0);
+  --success: oklch(0.65 0.15 145);
+  --warning: oklch(0.70 0.16 85);
+  --info: oklch(0.65 0.18 250);
+  --sidebar: oklch(0.21 0.006 285.885);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.274 0.006 286.033);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --scrollbar-thumb: oklch(1 0 0 / 8%);
+  --scrollbar-thumb-hover: oklch(1 0 0 / 18%);
+  --hairline: oklch(1 0 0 / 0.10);
+  --exec-surface: color-mix(in oklab, #fff 12%, transparent);
+  --exec-border: color-mix(in oklab, #fff 20%, transparent);
+  --text-soft: oklch(0.78 0.01 286);
+  --glass-bg: oklch(0.21 0.006 285.885 / .72);
+  --brand-press: oklch(0.72 0.16 255);
+  --brand-tint: oklch(0.30 0.05 255);
+  --wf: oklch(0.72 0.18 295);
+  --wf-soft: oklch(0.72 0.18 295 / 0.18);
+  --wf-tint: oklch(0.28 0.06 295);
+  --border-strong: oklch(1 0 0 / 0.16);
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / .35);
+  --shadow: 0 1px 3px oklch(0 0 0 / .5), 0 1px 2px -1px oklch(0 0 0 / .4);
+  --elev-thumb: 0 0 0 1px oklch(1 0 0 / .08), 0 1px 2px oklch(0 0 0 / .40);
+  --elev-pop: 0 0 0 1px oklch(1 0 0 / .10), 0 2px 4px -1px oklch(0 0 0 / .30), 0 12px 28px -6px oklch(0 0 0 / .50);
+  --elev-dialog: 0 0 0 1px oklch(1 0 0 / .10), 0 4px 8px -2px oklch(0 0 0 / .30), 0 28px 56px -12px oklch(0 0 0 / .60);
+  color-scheme: dark;
+}
+
+:root[data-fontsize="sm"] {
+  font-size: 14px;
+  --fs-tiny: 10px;
+  --lh-tiny: 12px;
+  --fs-meta: 10px;
+  --lh-meta: 14px;
+  --fs-ui: 11px;
+  --lh-ui: 16px;
+  --fs-prose-eval: 12px;
+  --lh-prose-eval: 20px;
+  --fs-md-code: 11px;
+  --lh-md-code: 18px;
+  --fs-md-code-eval: 11px;
+  --lh-md-code-eval: 18px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --lh-xs: 14px;
+  --lh-sm: 18px;
+  --lh-base: 21px;
+  --lh-lg: 24px;
+  --lh-xl: 26px;
+  --lh-tiny-loose: 16px;
+  --lh-meta-loose: 16px;
+  --lh-xs-loose: 18px;
+  --lh-ui-loose: 18px;
+  --lh-sm-loose: 20px;
+  --lh-xs-code: 16px;
+  --lh-ui-code: 18px;
+  --step--2: 10px;
+  --step--1: 11px;
+  --step-0: 13px;
+  --step-1: 18px;
+  --step-2: 24px;
+  --lh-step--2: 16px;
+  --lh-step--1: 18px;
+  --lh-step-0: 20px;
+  --lh-step-1: 28px;
+  --lh-step-2: 38px;
+  --lh-step-0-tight: 18px;
+  --lh-step-1-tight: 25px;
+  --lh-eval-title: 22px;
+  --rail-cell: 26px;
+}
+
+:root[data-fontsize="md"] {
+  font-size: 16px;
+  --fs-tiny: 10px;
+  --lh-tiny: 14px;
+  --fs-meta: 11px;
+  --lh-meta: 16px;
+  --fs-ui: 13px;
+  --lh-ui: 18px;
+  --fs-prose-eval: 14px;
+  --lh-prose-eval: 22px;
+  --fs-md-code: 12px;
+  --lh-md-code: 20px;
+  --fs-md-code-eval: 12px;
+  --lh-md-code-eval: 20px;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --lh-xs: 16px;
+  --lh-sm: 20px;
+  --lh-base: 24px;
+  --lh-lg: 28px;
+  --lh-xl: 28px;
+  --lh-tiny-loose: 16px;
+  --lh-meta-loose: 18px;
+  --lh-xs-loose: 20px;
+  --lh-ui-loose: 22px;
+  --lh-sm-loose: 22px;
+  --lh-xs-code: 18px;
+  --lh-ui-code: 20px;
+  --step--2: 11px;
+  --step--1: 13px;
+  --step-0: 15px;
+  --step-1: 20px;
+  --step-2: 28px;
+  --lh-step--2: 18px;
+  --lh-step--1: 20px;
+  --lh-step-0: 24px;
+  --lh-step-1: 32px;
+  --lh-step-2: 44px;
+  --lh-step-0-tight: 21px;
+  --lh-step-1-tight: 28px;
+  --lh-eval-title: 25px;
+  --rail-cell: 30px;
+}
+
+:root[data-fontsize="lg"] {
+  font-size: 18px;
+  --fs-tiny: 11px;
+  --lh-tiny: 16px;
+  --fs-meta: 12px;
+  --lh-meta: 18px;
+  --fs-ui: 15px;
+  --lh-ui: 20px;
+  --fs-prose-eval: 15px;
+  --lh-prose-eval: 24px;
+  --fs-md-code: 14px;
+  --lh-md-code: 24px;
+  --fs-md-code-eval: 13px;
+  --lh-md-code-eval: 22px;
+  --text-xs: 14px;
+  --text-sm: 16px;
+  --text-base: 18px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --lh-xs: 18px;
+  --lh-sm: 22px;
+  --lh-base: 27px;
+  --lh-lg: 32px;
+  --lh-xl: 34px;
+  --lh-tiny-loose: 18px;
+  --lh-meta-loose: 20px;
+  --lh-xs-loose: 22px;
+  --lh-ui-loose: 24px;
+  --lh-sm-loose: 26px;
+  --lh-xs-code: 21px;
+  --lh-ui-code: 22px;
+  --step--2: 12px;
+  --step--1: 14px;
+  --step-0: 16px;
+  --step-1: 24px;
+  --step-2: 28px;
+  --lh-step--2: 20px;
+  --lh-step--1: 22px;
+  --lh-step-0: 26px;
+  --lh-step-1: 38px;
+  --lh-step-2: 44px;
+  --lh-step-0-tight: 22px;
+  --lh-step-1-tight: 33px;
+  --lh-eval-title: 30px;
+  --rail-cell: 34px;
+}
+
+:root {
+  --density-scale: 1;
+}
+
+:root {
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* 中文字形:与 src/styles.css 同一份。 */
+@font-face {
+  font-family: "PiCode CJK";
+  src: local("PingFangSC-Light");
+  font-weight: 100 349;
+  unicode-range: U+2E80-2FDF, U+3000-33FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE10-FE1F, U+FE30-FE4F, U+FF00-FFEF, U+20000-2FA1F;
+}
+@font-face {
+  font-family: "PiCode CJK";
+  src: local("PingFangSC-Regular");
+  font-weight: 350 449;
+  unicode-range: U+2E80-2FDF, U+3000-33FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE10-FE1F, U+FE30-FE4F, U+FF00-FFEF, U+20000-2FA1F;
+}
+@font-face {
+  font-family: "PiCode CJK";
+  src: local("PingFangSC-Medium");
+  font-weight: 450 549;
+  unicode-range: U+2E80-2FDF, U+3000-33FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE10-FE1F, U+FE30-FE4F, U+FF00-FFEF, U+20000-2FA1F;
+}
+@font-face {
+  font-family: "PiCode CJK";
+  src: local("PingFangSC-Semibold");
+  font-weight: 550 1000;
+  unicode-range: U+2E80-2FDF, U+3000-33FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE10-FE1F, U+FE30-FE4F, U+FF00-FFEF, U+20000-2FA1F;
+}
+
+/* 光学字号:与 src/styles.css 同一条。 */
+*, ::before, ::after { font-optical-sizing: none !important; }
+
+/* 预览基线:只引用上面的令牌,不引入新数值。 */
+@font-face { font-family: "SF Mono"; src: url("fonts/SF-Mono-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "SF Mono"; src: url("fonts/SF-Mono-RegularItalic.otf") format("opentype"); font-weight: 400; font-style: italic; font-display: block; }
+@font-face { font-family: "SF Mono"; src: url("fonts/SF-Mono-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: block; }
+@font-face { font-family: "SF Mono"; src: url("fonts/SF-Mono-Semibold.otf") format("opentype"); font-weight: 600; font-style: normal; font-display: block; }
+@font-face { font-family: "SF Mono"; src: url("fonts/SF-Mono-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: block; }
+html { font-family: var(--font-sans); color: var(--foreground); background: var(--sidebar); }
+body { margin: 0; font-size: var(--text-sm); line-height: var(--lh-sm); -webkit-font-smoothing: antialiased; }

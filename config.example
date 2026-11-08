@@ -1,0 +1,15 @@
+# Copy this public template to .env for local use. No real credentials here.
+HOST=127.0.0.1
+PORT=4173
+# Configure these through Railway Variables in production.
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=
+LLM_API_KEY=
+IFIND_API_KEY=
+IFIND_CONFIG_PATH=
+FUYAO_API_KEY=
+PUBLIC_DATA_ENABLED=false
+APP_ORIGIN=
+# Production with model/data credentials requires an access password of 16+ characters.
+REVIEW_USER=reviewer
+REVIEW_PASSWORD=

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>选股有据 · 可解释选股工作台</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="工作台导航">
+      <a class="brand" href="#top" aria-label="选股有据首页">
+        <span class="brand-mark" aria-hidden="true">据</span>
+        <span><strong>选股有据</strong><small>研究工作台</small></span>
+      </a>
+      <nav class="nav-list">
+        <a class="nav-item active" href="#workbench"><span class="nav-icon">◈</span>条件工作台</a>
+        <a class="nav-item" href="#results"><span class="nav-icon">▤</span>筛选结果</a>
+        <a class="nav-item" href="#saved"><span class="nav-icon">▱</span>本地记录</a>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="api-state"><span class="status-dot" id="healthDot"></span><span id="healthText">正在检查连接</span></div>
+        <p class="sidebar-note">研究辅助工具，不构成投资建议</p>
+      </div>
+    </aside>
+
+    <main class="main" id="top">
+      <header class="topbar">
+        <div class="crumb"><span>研究空间</span><span class="crumb-sep">/</span><strong>条件工作台</strong></div>
+        <div class="top-actions">
+          <button class="icon-btn" id="themeBtn" type="button" aria-label="切换浅深色">◐</button>
+          <button class="button button-secondary" id="restoreBtn" type="button">恢复记录</button>
+          <button class="button button-secondary" id="saveBtn" type="button">保存当前</button>
+          <button class="button button-primary" id="exportBtn" type="button">导出 JSON</button>
+        </div>
+      </header>
+
+      <div class="content" id="workbench">
+        <section class="intro" aria-labelledby="pageTitle">
+          <div>
+            <p class="eyebrow">证据优先的研究工作台</p>
+            <h1 id="pageTitle">把想法，变成有据可查的条件。</h1>
+            <p class="intro-copy">先描述研究意图，再确认明确条件。每个结论都保留来源、日期和口径。</p>
+          </div>
+          <div class="mode-card" id="modeCard">
+            <span class="status-dot" id="modeDot"></span>
+            <div><strong id="modeTitle">尚未加载数据</strong><small id="modeDescription">请选择数据模式并加载，结果不会预先生成</small></div>
+          </div>
+        </section>
+
+        <div class="notice notice-info" id="disclosure">
+          <span class="notice-icon">i</span>
+          <div><strong id="disclosureTitle">当前选择演示数据</strong><p id="disclosureCopy">样本名称和代码均为虚构，仅用于体验流程。真实数据请显式切换来源。</p></div>
+          <button class="text-button" id="dismissDisclosure" type="button">知道了</button>
+        </div>
+
+        <div class="workspace-grid">
+          <section class="panel condition-panel" aria-labelledby="conditionTitle">
+            <div class="panel-heading">
+              <div><p class="section-kicker">01 · 定义条件</p><h2 id="conditionTitle">描述你的选股想法</h2></div>
+              <span class="step-badge">先解析，再确认</span>
+            </div>
+            <label class="field-label" for="intentInput">自然语言样例</label>
+            <div class="input-wrap"><textarea id="intentInput" rows="3" placeholder="例如：筛选市盈率低于 20 倍且净资产收益率高于 10% 的公司"></textarea><span class="char-count" id="charCount">0 / 200</span></div>
+            <div class="sample-row"><button class="sample-chip" type="button" data-sample="筛选市盈率低于 20 倍且净资产收益率高于 10% 的公司">低估值 + 盈利能力</button><button class="sample-chip" type="button" data-sample="找出近20日涨幅超过5%，且20日年化波动率不高于30%的公司">动量 + 稳定性</button></div>
+            <div class="action-row"><button class="button button-primary" id="interpretBtn" type="button">解析研究意图</button><span class="parser-note" id="parserNote">解析前不会调用模型</span></div>
+
+            <div class="parse-result" id="parseResult" hidden>
+              <div class="result-heading"><div><span class="section-kicker">解析结果</span><h3 id="parseSummary">等待解析</h3></div><span class="mode-tag" id="parserMode">规则解析模式</span></div>
+              <div class="message-list" id="messageList"></div>
+              <div class="conditions-head"><h3>待确认条件</h3><button class="text-button" id="addConditionBtn" type="button">＋ 添加条件</button></div>
+              <div id="conditionsList" class="conditions-list"></div>
+              <div class="confirm-row"><span class="confirm-hint" id="confirmHint">请确认条件后再筛选</span><button class="button button-primary" id="confirmBtn" type="button" disabled>确认并筛选</button></div>
+            </div>
+          </section>
+
+          <section class="panel data-panel" aria-labelledby="dataTitle">
+            <div class="panel-heading"><div><p class="section-kicker">数据来源</p><h2 id="dataTitle">数据与口径</h2></div><span class="freshness" id="dataStatus">尚未加载</span></div>
+            <label class="field-label" for="dataMode">数据模式</label>
+            <select id="dataMode" class="select-control"><option value="demo">演示数据 · 合成样本</option><option value="ifind">iFinD · 授权固定日期快照</option><option value="fuyao">扶摇数据 · 需服务配置</option><option value="public">公开来源 · 需验证可用</option></select>
+            <div class="source-summary" id="sourceSummary"><div class="source-icon">◌</div><div><strong>选择数据模式并加载</strong><p>不会在未选择数据和筛选前展示结果。</p></div></div>
+            <button class="button button-secondary full-button" id="loadDataBtn" type="button">加载此数据源</button>
+            <div class="source-meta" id="sourceMeta"><span>来源：未加载</span><span>截至：未知</span></div>
+            <div class="safe-note"><span>✓</span>数据源切换或编辑条件后，旧结果会标记为过期</div>
+          </section>
+        </div>
+
+        <section class="panel results-panel" id="results" aria-labelledby="resultsTitle">
+          <div class="results-heading">
+            <div><p class="section-kicker">02 · 查看结果</p><h2 id="resultsTitle">筛选结果</h2><p class="results-sub" id="resultsSub">确认条件并完成筛选后，结果会显示在这里。</p></div>
+            <div class="result-tools"><span class="snapshot-tag" id="snapshotTag">未生成快照</span><button class="button button-secondary" id="retryBtn" type="button" hidden>重试</button></div>
+          </div>
+          <div id="errorBox" class="notice notice-error" hidden><span class="notice-icon">!</span><div><strong id="errorTitle">暂时无法完成</strong><p id="errorMessage">请检查连接后重试。</p></div><button class="text-button" id="errorRetryBtn" type="button">重试</button></div>
+          <div class="empty-results" id="emptyResults"><div class="empty-mark">⌁</div><h3>还没有筛选结果</h3><p>先加载数据源，再解析并确认至少一条条件。</p><span class="empty-detail">结果不会预先生成，避免把旧数据误认为当前条件的结论。</span></div>
+          <div id="resultsContent" hidden>
+            <div class="stats-row" id="statsRow"></div>
+            <div class="tabs" role="tablist" aria-label="结果视图"><button class="tab active" role="tab" aria-selected="true" data-tab="overview">概览</button><button class="tab" role="tab" aria-selected="false" data-tab="evidence">证据详情</button><button class="tab" role="tab" aria-selected="false" data-tab="compare">前后对比</button></div>
+            <div class="tab-content" id="overviewTab"></div><div class="tab-content" id="evidenceTab" hidden></div><div class="tab-content" id="compareTab" hidden></div>
+          </div>
+        </section>
+
+        <section class="panel saved-panel" id="saved" aria-labelledby="savedTitle">
+          <div class="saved-head"><div><p class="section-kicker">03 · 保存记录</p><h2 id="savedTitle">本地记录</h2><p>仅保存在当前浏览器。恢复内容会标注为历史记录，不代表实时行情。</p></div><span class="local-badge" id="storageStatus">本地存储待使用</span></div>
+          <div id="savedContent" class="saved-content"><div class="saved-empty">暂无保存记录。完成一次筛选后，可保存条件、快照与结果。</div></div>
+        </section>
+        <footer class="footer"><span>选股有据 v0.1 · 研究辅助，不构成投资建议</span><span>所有日期均显示数据源原始口径</span></footer>
+      </div>
+    </main>
+  </div>
+  <dialog id="evidenceDialog" class="evidence-dialog"><div class="dialog-head"><div><p class="section-kicker">证据详情</p><h2 id="dialogTitle">证据详情</h2></div><button class="icon-btn" id="closeDialog" type="button" aria-label="关闭">×</button></div><div id="dialogBody"></div></dialog>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
