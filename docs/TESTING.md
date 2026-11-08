@@ -4,14 +4,16 @@
 
 本项目区分四件事：**测试代码存在、某次运行通过、真实外部服务可用、真实用户能完成任务**。它们不能互相替代。
 
-本文以 2026-11-08 [LIVE_VALIDATION.md](LIVE_VALIDATION.md) 为最新运行证据，并核对现有测试文件与脚本。文档 Worker 本次未重新运行全量测试或新增真实服务请求；若提交前代码继续改动，应对冻结版本重跑并记录输出。
+本文以2026-11-08[公网验证](PRODUCTION_VALIDATION.md)和[本机验证](LIVE_VALIDATION.md)为运行证据，并核对现有测试文件与脚本。文档 Worker 本次未重新运行全量测试或新增真实服务请求；若提交前代码继续改动，应对冻结版本重跑并记录输出。
 
 ### 已收到的运行结果
 
 | 最新集成后批次 | 命令 | 实际结果 | 能证明 / 不能证明 |
 | --- | --- | --- | --- |
-| 单元/接口全量 | `npm test` | tests 75 / pass 75 / fail 0 | 本次集成后的合成、mock 与依赖注入用例通过；不证明外部服务长期可用 |
-| 浏览器 E2E | `npm run test:e2e` | tests 5 / pass 5 / fail 0 | Chromium 中合成数据主链路通过；不是真实模型、真实数据或公网验收 |
+| 单元/接口全量 | `npm test` | tests 79 / pass 79 / fail 0 | 本次集成后的合成、mock 与依赖注入用例通过；不证明外部服务长期可用 |
+| 浏览器 E2E | `npm run test:e2e` | tests 5 / pass 5 / fail 0 | Chromium中合成数据主链路通过 |
+| 公网真实验证 | 受控HTTP与Chromium调用 | API及浏览器验证PASS | 已部署站点的DeepSeek解析、iFinD12股数据、筛选、证据、保存恢复通过；与mock测试分开 |
+| 完整设计检查 | `npm run check:design` | 三个目标全部合规 | 包括主页面、配置页与完整样式；不替代用户可用性研究 |
 
 `npm test` 对应现有 `node --test tests/*.test.mjs`；E2E 由独立脚本运行，不在该 glob 内。旧基础/专项批次与全量有重叠，不累加计数；live 请求也不计入自动化通过数。
 
