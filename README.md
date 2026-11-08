@@ -43,7 +43,7 @@ node scripts/setup-fuyao.mjs
 
 两个配置入口共用回环地址、Host/Origin、令牌、替换确认和私有文件保存保护，分别验证各自供应商。模型列表验证不等于推理成功；扶摇单只估值接口验证不等于全部数据权限已验证。配置操作会访问供应商，可能消耗额度，不是离线测试。
 
-扶摇本机配置保存后，运行产品时需显式设置 `FUYAO_CONFIG_PATH=.local/fuyao.json`，或使用 `FUYAO_API_KEY`（环境密钥优先）；不会自动搜索本机凭证。本次工作区扶摇已安全保存并完成全 12 股本机验证，**云端尚未配置 `FUYAO_API_KEY`**。不要将 `.local/`、`.env` 或真实响应提交/打包。详见 [部署说明](docs/DEPLOYMENT.md)。
+扶摇本机配置保存后，运行产品时需显式设置 `FUYAO_CONFIG_PATH=.local/fuyao.json`，或使用 `FUYAO_API_KEY`（环境密钥优先）；不会自动搜索本机凭证。本次工作区扶摇已安全保存并完成全 12 股本机验证，**云端已通过平台 Secret 配置 `FUYAO_API_KEY`，V3 公网真实自动取数与筛选已通过验证**。不要将 `.local/`、`.env` 或真实响应提交/打包。详见 [部署说明](docs/DEPLOYMENT.md)。
 
 ## 数据范围与真实验证
 
@@ -86,7 +86,7 @@ node scripts/setup-fuyao.mjs
 
 评审账号仅通过私有附件交付。生产安全检查同时覆盖环境密钥与显式金融配置路径，未正确配置访问保护会拒绝业务访问；健康检查只显示配置状态，不证明凭证有效或数据已可用。查询授权不等于公开再分发权。
 
-使用单实例常驻 Node 或 Docker，不直接部署为无共享状态的多实例/短生命周期 Serverless。完整步骤及 V3 发布待办见 [部署说明](docs/DEPLOYMENT.md)。
+使用单实例常驻 Node 或 Docker，不直接部署为无共享状态的多实例/短生命周期 Serverless。完整步骤、V3 发布记录及验证边界见 [部署说明](docs/DEPLOYMENT.md)。
 
 ## 测试与交付文档
 
@@ -97,7 +97,7 @@ npm run test:e2e
 npm run check:design
 ```
 
-普通测试使用合成数据、mock 和本机随机端口，不需要真实服务密钥。当前 **121 项单元/接口通过**包含 25 项 auto-data 用例，不重复累加；新版 **8 条浏览器测试待运行验收**，旧 V2 的 79+6 不能替代。详见 [测试说明](docs/TESTING.md)。
+普通测试使用合成数据、mock 和本机随机端口，不需要真实服务密钥。当前 **121 项单元/接口通过**包含 25 项 auto-data 用例，不重复累加；新版 **8 条浏览器测试已通过，完整设计检查已通过**，旧 V2 的 79+6 不能替代。详见 [测试说明](docs/TESTING.md)。
 
 - [产品取舍与验证计划](docs/PRODUCT.md)
 - [AI 使用与责任披露](docs/AI_USAGE.md)

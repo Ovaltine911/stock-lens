@@ -6,7 +6,7 @@
 
 **范围固定为12家A股观察样本，非全市场。** `lib/data.mjs` 的 `RESEARCH_POOL` 不按筛选结果临时挑选，行业标签是人工元信息，不代表支持行业筛选。
 
-当前V3已完成本机自动数据验证，尚未部署。公网仍为V2 `a8462ee`，GitHub PUBLIC已推送V2；云端尚未配置扶摇。最新真实覆盖以 [V3验证记录](V3_VALIDATION.md) 为准，[V2公网验证（历史）](PRODUCTION_VALIDATION.md) 不代表V3云端已可用。
+当前V3已部署，公网运行代码为 `77ca4f3`，GitHub PUBLIC已推送V3；云端扶摇已安全配置，真实明确单提交和模糊单确认流程通过。下文逐字段覆盖与1570ms耗时来自本机，不能当作公网独立测量。最新本机与公网证据见 [V3验证记录](V3_VALIDATION.md)，[V2公网验证（历史）](PRODUCTION_VALIDATION.md) 只保留历史参考。
 
 ## 2. 本机全12股真实验证
 
@@ -115,8 +115,8 @@ AUTO_SCREEN_COUNTS={"pass":5,"fail":7,"unknown":0,"total":12}
 
 供应商文档：[扶摇快速开始](https://fuyao.aicubes.cn/docs/quickstart/)、[估值](https://fuyao.aicubes.cn/docs/api-reference/valuations/)、[行情](https://fuyao.aicubes.cn/docs/api-reference/prices/)、[财务报表](https://fuyao.aicubes.cn/docs/api-reference/financials/)。文档示例值只说明结构，绝不作为真实样本。
 
-## 7. 权限与发布待办
+## 7. 权限与发布状态
 
-用户已授权API，扶摇已在本机安全保存；不需在文档操作中重跑收费接口。当前生产缺少扶摇Secret，V3前端和公网验收待补。普通回归121通过与新浏览器8条待验收的状态见 [TESTING.md](TESTING.md)，发布清单见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+用户已授权API，扶摇已在本机安全保存，生产也已独立配置服务端Secret；不需在文档操作中重跑收费接口。V3前端及公网真实主流程已验收，121项单元/接口、8条浏览器与完整设计检查通过。详细已测范围与剩余边界见 [TESTING.md](TESTING.md)，发布记录见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
-查询授权不等于公开展示/保存/再分发许可。密钥仅在服务端，生产金融凭证需要评审访问保护；公共仓库、fixture、日志、截图和提交包不包含私有凭证与受限原始数据。一次请求成功不承诺账户长期额度、外部接口稳定性或金融研究收益。
+查询授权不等于公开展示/保存/再分发许可。密钥仅在服务端，生产金融凭证需要评审访问保护；公共仓库和测试fixture不包含真实API凭证与受限原始数据；真实结果截图仅用于私下验证，不公开打包。提交包只在独立私有说明中包含评审访问口令，不能公开分享。一次请求成功不承诺账户长期额度、外部接口稳定性或金融研究收益。
